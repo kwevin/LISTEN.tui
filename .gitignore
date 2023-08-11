@@ -1,0 +1,5 @@
+.venv
+.vscode
+.test*
+__pycache__
+logs
