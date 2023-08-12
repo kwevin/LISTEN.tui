@@ -4,9 +4,9 @@ from src.module.listen_ws import ListenMoe
 
 if __name__ == "__main__":
     log = Logger.create_logger(True)
-    interface = Interface(log)
+    interface = Interface()
     interface.start()
-    listen = ListenMoe(interface, log)
+    listen = ListenMoe(interface)
     listen.start()
 
     while True:

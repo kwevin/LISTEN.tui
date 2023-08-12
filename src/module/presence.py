@@ -2,7 +2,7 @@
 import asyncio
 import os
 import time
-from logging import Logger
+from logging import getLogger
 
 from pypresence import AioPresence, DiscordNotFound
 from pypresence.exceptions import ResponseTimeout
@@ -96,8 +96,8 @@ class Payload(Payload):
 
 
 class DiscordRichPresence:
-    def __init__(self, log: Logger) -> None:
-        self.log = log
+    def __init__(self) -> None:
+        self.log = getLogger(__name__)
         self.presence = AioPresence(1042365983957975080)
         self.is_arrpc: bool = False
         self._data_queue = None
@@ -110,7 +110,7 @@ class DiscordRichPresence:
         return int(round(time.time() + duration))
 
     async def _sanitise(self, string: str | None) -> str:
-        default: str = "♪ ♪"
+        default: str = " ♪"
 
         if len(string) < 2:
             string += default
@@ -168,7 +168,7 @@ class DiscordRichPresence:
             except DiscordNotFound:
                 await self.update_status(False, "Discord Not Found")
                 self.log.info("Discord Not Found")
-                await asyncio.sleep(60)
+                await asyncio.sleep(120)
             
             while self.status.running:
                 await asyncio.sleep(1)
@@ -223,13 +223,13 @@ class DiscordRichPresence:
 
         except BrokenPipeError:
             await self.update_status(False, "BrokenPipeError")
-            self.log.exception("[RPC] BrokenPipeError")
-            return BrokenPipeError
+            self.log.info("[RPC] BrokenPipeError")
+            self.status.running(False, 'BrokenPipeError')
         except (ResponseTimeout, asyncio.exceptions.CancelledError, TimeoutError):
             await self.update_status(False, "RPC Response Timeout")
-            self.log.exception("[RPC] TimeoutError")
-            return ResponseTimeout
+            self.log.info("[RPC] TimeoutError")
+            self.status.running(False, 'TimeoutError')
         except Exception as exc:
             await self.update_status(False, f"{exc}")
-            self.log.exception("Exception has occured")
-            return exc
+            self.log.info("Exception has occured")
+            self.status.running(False, f'{exc}')

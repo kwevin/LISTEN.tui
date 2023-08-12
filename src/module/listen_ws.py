@@ -2,7 +2,7 @@ import asyncio
 import json
 import threading
 import time
-from logging import Logger
+from logging import getLogger
 from typing import Any
 
 import websockets.client as websockets
@@ -15,10 +15,10 @@ from src.module.types import ListenWsData, Status
 
 
 class ListenMoe(threading.Thread):
-    def __init__(self, interface: Interface, log: Logger, presence: bool = True) -> None:
+    def __init__(self, interface: Interface, presence: bool = True) -> None:
         super().__init__()
         self.interface = interface
-        self.log = log
+        self.log = getLogger(__name__)
         self._presence: bool = presence
         self.ws_data: dict[Any, Any] = dict()
         self.status = Status(False, 'Initialising')
@@ -48,7 +48,7 @@ class ListenMoe(threading.Thread):
 
     async def main(self) -> None:
         if self._presence:
-            self.presence = DiscordRichPresence(self.log)
+            self.presence = DiscordRichPresence()
             self.loop.create_task(self.run_presence())
         async for self.ws in websockets.connect('wss://listen.moe/gateway_v2', ping_interval=None, ping_timeout=None):
             try:
@@ -62,7 +62,7 @@ class ListenMoe(threading.Thread):
                             
                         case 1:
                             self.log.info(f"Data Received: {pretty_repr(self.ws_data)}")
-                            self.data = ListenWsData(self.ws_data)
+                            self.data = ListenWsData.from_data(self.ws_data)
                             if self.presence:
                                 if self.presence.status.running:
                                     res = await self.presence.update(self.data.song)

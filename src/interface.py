@@ -1,7 +1,7 @@
 import threading
 import time
 from datetime import datetime, timedelta
-from logging import Logger
+from logging import getLogger
 from typing import Literal
 
 from rich.console import Console, Group, RenderableType
@@ -82,7 +82,7 @@ class Controls:
     
 
 class Interface(threading.Thread):
-    def __init__(self, log: Logger) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.data: ListenWsData | None = None
         self.progress = Progress(SpinnerColumn('simpleDotsScrolling'),
@@ -92,15 +92,15 @@ class Interface(threading.Thread):
         self.duration = self.progress.add_task('Duration', total=None)
         self.console = Console()
         self.controls = Controls()
-        self.module: dict[str, Status] = {'Interface': Status(True, ''),
-                                          'Websocket': Status(False, 'Initialising'),
-                                          }
-        self.log = log
+        self.modules: dict[str, Status] = {'Interface': Status(True, ''),
+                                           'Websocket': Status(False, 'Initialising'),
+                                           }
+        self.log = getLogger(__name__)
         self.start_time = time.time()
         self.time_since = 0
 
     def update_status(self, module: Literal['Websocket'], status: Status):
-        self.module[module] = status
+        self.modules[module] = status
 
     def update_data(self, data: ListenWsData) -> None:
         self.data = data
@@ -117,7 +117,7 @@ class Interface(threading.Thread):
         table = Table(expand=True)
         table.add_column("Info")
         
-        if not all([i.running for i in self.module.values()]) or not self.data:
+        if not all([i.running for i in self.modules.values()]) or not self.data:
             return table
         table.add_row(f"Last heartbeat: {datetime.fromtimestamp(self.data.last_heartbeat).strftime('%H:%M:%S')}")
         table.add_row(f"Time since: {timedelta(seconds=self.time_since)}")
@@ -136,10 +136,10 @@ class Interface(threading.Thread):
         table.add_column("Key", ratio=2)
         table.add_column("Value", ratio=8)
         
-        if not all([i.running for i in self.module.values()]) or not self.data:
+        if not all([i.running for i in self.modules.values()]) or not self.data:
             table.add_column("Status")
-            table.add_row("Interface", f"{self.module['Interface'].running}", f"{self.module['Interface'].reason}")
-            table.add_row("Websocket", f"{self.module['Websocket'].running}", f"{self.module['Websocket'].reason}")
+            table.add_row("Interface", f"{self.modules['Interface'].running}", f"{self.modules['Interface'].reason}")
+            table.add_row("Websocket", f"{self.modules['Websocket'].running}", f"{self.modules['Websocket'].reason}")
             self.progress.update(self.duration, completed=0, total=None)
             return table
 

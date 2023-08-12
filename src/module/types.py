@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from time import time
-from typing import Any, Literal
+from typing import Any, Literal, Self, Type
 
 
 @dataclass
@@ -49,20 +49,34 @@ class Album:
     image: str | None
 
 
-@dataclass(init=False)
+@dataclass
 class Song:
 
-    def __init__(self, song: dict[str, Any]) -> None:
-        self.id = song['id']
-        self.duration = song.get('duration', None)
-        self.time_end = round(time() + self.duration) if self.duration else round(time())
-        self.title = Song._get_title(song)
-        self.sources = Song._get_sources(song)
-        self.artists = Song._get_artists(song)
-        self.albums = Song._get_albums(song)
-        self.characters = Song._get_characters(song)
+    # def __init__(self, song: dict[str, Any]) -> None:
+    #     self.id = song['id']
+    #     self.duration = song.get('duration', None)
+    #     self.time_end = round(time() + self.duration) if self.duration else round(time())
+    #     self.title = Song._get_title(song)
+    #     self.sources = Song._get_sources(song)
+    #     self.artists = Song._get_artists(song)
+    #     self.albums = Song._get_albums(song)
+    #     self.characters = Song._get_characters(song)
 
-        return
+    #     return
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        duration = data.get('duration', None)
+        return cls(
+            id=data['id'],
+            duration=duration,
+            time_end=round(time() + duration) if duration else round(time()),
+            title=Song._get_title(data),
+            sources=Song._get_sources(data),
+            artists=Song._get_artists(data),
+            albums=Song._get_albums(data),
+            characters=Song._get_characters(data),
+        )
     
     @staticmethod
     def _append_cdn(type: Literal['albums', 'artists', 'sources'], value: str | None) -> str | None:
@@ -149,29 +163,23 @@ class Song:
     def albums_to_string(self, romji_first: bool = True, sep: str = ', ') -> str | None:
         return self._list_to_string(self.albums, romaji_first=romji_first, sep=sep)
     
-    def artist_image(self) -> str | None:
-        if not self.artists:
+    @staticmethod
+    def _get_image(lst: list[Artist] | list[Source] | list[Album] | None) -> str | None:
+        if not lst:
             return None
-        for artist in self.artists:
-            if artist.image:
-                return artist.image
+        for item in lst:
+            if item.image:
+                return item.image
         return None
+    
+    def artist_image(self) -> str | None:
+        return self._get_image(self.artists)
 
     def source_image(self) -> str | None:
-        if not self.sources:
-            return None
-        for source in self.sources:
-            if source.image:
-                return source.image
-        return None
+        return self._get_image(self.sources)
 
-    def album_image(self):
-        if not self.albums:
-            return None
-        for album in self.albums:
-            if album.image:
-                return album.image
-        return None
+    def album_image(self) -> str | None:
+        return self._get_image(self.albums)
 
     id: int
     title: str | None
@@ -198,35 +206,50 @@ class Rpc:
     type: int
 
 
-@dataclass(init=False)
+@dataclass
 class ListenWsData:
 
-    def __init__(self,
-                 data: dict[str, Any],
-                 use_artist_in_cover: bool = True,
-                 ) -> None:
+    # def __init__(self,
+    #              data: dict[str, Any],
+    #              use_artist_in_cover: bool = True,
+    #              ) -> None:
+
+    #     self._data = data
+    #     self._use_artist_in_cover = use_artist_in_cover
+        
+    #     self._op = data['op']
+    #     self._t = data['t']
+    #     self.start_time = data['d']['startTime']
+    #     self.listener = data['d']['listeners']
+    #     self.requester = data['d'].get('requester', None)
+    #     self.event = data['d'].get('event', None)
+
+    #     self.song = Song(data['d']['song'])
+    #     self.last_played: list[Song] = []
+    #     for song in data['d']['lastPlayed']:
+    #         self.last_played.append(Song(song))
+    #     return
+    
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         """
         A dataclass representation of listen.moe websocket data
 
         Args:
-            data `dict`: The websocket data\n
-            use_artist_in_cover `bool`: Use the artist cover (if any) when no song cover is found. Default: `True`\n
+            data `dict`: The websocket data
+        Return:
+            Self `ListenWsData`
         """
-        self._data = data
-        self._use_artist_in_cover = use_artist_in_cover
-        
-        self._op = data['op']
-        self._t = data['t']
-        self.start_time = data['d']['startTime']
-        self.listener = data['d']['listeners']
-        self.requester = data['d'].get('requester', None)
-        self.event = data['d'].get('event', None)
-
-        self.song = Song(data['d']['song'])
-        self.last_played: list[Song] = []
-        for song in data['d']['lastPlayed']:
-            self.last_played.append(Song(song))
-        return
+        return cls(
+            _op=data['op'],
+            _t=data['t'],
+            start_time=data['d']['startTime'],
+            listener=data['d']['listeners'],
+            requester=data['d'].get('requester', None),
+            event=data['d'].get('event', None),
+            song=Song.from_data(data['d']['song']),
+            last_played=[Song.from_data(song) for song in data['d']['lastPlayed']]
+        )
         
     _op: int
     _t: str
@@ -253,10 +276,11 @@ if __name__ == "__main__":
                 data = json.loads(await ws.recv())
 
                 if data['op'] == 1:
+                    await ws.close()
                     return data
     loop = asyncio.new_event_loop()
     data = loop.run_until_complete(get_data())
-    e = ListenWsData(data)
+    e = ListenWsData.from_data(data)  # pyright: ignore[reportGeneralTypeIssues]
     pprint(e)
     pprint(e.song.sources_to_string())
     pprint(e.song.artists_to_string())
