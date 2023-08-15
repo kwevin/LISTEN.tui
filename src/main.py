@@ -1,12 +1,12 @@
+from display.display import Display
+from listen.websocket import ListenWebsocket
 from log import Logger
-from src.interface import Interface
-from src.module.listen_ws import ListenMoe
 
 if __name__ == "__main__":
     log = Logger.create_logger(True)
-    interface = Interface()
-    interface.start()
-    listen = ListenMoe(interface)
+    display = Display()
+    display.start()
+    listen = ListenWebsocket(display)
     listen.start()
 
     while True:

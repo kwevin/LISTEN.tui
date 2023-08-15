@@ -9,13 +9,14 @@ import websockets.client as websockets
 from rich.pretty import pretty_repr
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
-from src.interface import Interface
+from src.display.display import Display
+from src.listen.types import ListenWsData
 from src.module.presence import DiscordRichPresence
-from src.module.types import ListenWsData, Status
+from src.module.types import Status
 
 
-class ListenMoe(threading.Thread):
-    def __init__(self, interface: Interface, presence: bool = True) -> None:
+class ListenWebsocket(threading.Thread):
+    def __init__(self, interface: Display, presence: bool = True) -> None:
         super().__init__()
         self.interface = interface
         self.log = getLogger(__name__)

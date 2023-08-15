@@ -9,7 +9,8 @@ from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
 from rich.pretty import pretty_repr
 
-from src.module.types import Activity, Rpc, Song, Status
+from src.listen.types import Song
+from src.module.types import Activity, Rpc, Status
 
 
 class AioPresence(AioPresence):

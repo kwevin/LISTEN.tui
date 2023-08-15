@@ -13,7 +13,8 @@ from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
 from rich.table import Table
 from rich.text import Text
 
-from src.module.types import ListenWsData, Status
+from src.listen.types import ListenWsData
+from src.module.types import Status
 
 
 class MofNCompletePercentageColumn(MofNCompleteColumn):
@@ -81,7 +82,7 @@ class Controls:
     # make func that changes the variable used for render() to switch pages and switch it back once done, refactor these functions so that they only compute once
     
 
-class Interface(threading.Thread):
+class Display(threading.Thread):
     def __init__(self) -> None:
         super().__init__()
         self.data: ListenWsData | None = None

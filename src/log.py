@@ -2,19 +2,21 @@ import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 from os import mkdir
-from os.path import isdir
+from pathlib import Path
 
 
 class Logger(logging.Logger):
     @staticmethod
     def create_logger(verbose: bool) -> logging.Logger:
         level = logging.DEBUG if verbose else logging.WARNING
+        log_folder = Path().resolve().joinpath('logs')
+        log_file = log_folder.joinpath('log').absolute()
 
-        if not isdir('logs'):
-            mkdir('logs')
+        if not log_folder.is_dir():
+            mkdir(log_folder)
 
         file_handler = RotatingFileHandler(
-            ".\\logs\\log",
+            filename=log_file,
             mode="a+",
             maxBytes=1024 * 1024 * 100,
             backupCount=5,
