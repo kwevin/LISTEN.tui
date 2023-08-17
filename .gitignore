@@ -1,5 +1,6 @@
 .venv
 .vscode
 .test*
+*.dll
 __pycache__
 logs

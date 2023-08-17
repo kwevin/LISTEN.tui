@@ -95,12 +95,13 @@ class Display(threading.Thread):
         self.controls = Controls()
         self.modules: dict[str, Status] = {'Interface': Status(True, ''),
                                            'Websocket': Status(False, 'Initialising'),
+                                           'Stream': Status(False, 'Initialising')
                                            }
         self.log = getLogger(__name__)
         self.start_time = time.time()
         self.time_since = 0
 
-    def update_status(self, module: Literal['Websocket'], status: Status):
+    def update_status(self, module: Literal['Websocket', 'Stream'], status: Status):
         self.modules[module] = status
 
     def update_data(self, data: ListenWsData) -> None:
@@ -141,6 +142,7 @@ class Display(threading.Thread):
             table.add_column("Status")
             table.add_row("Interface", f"{self.modules['Interface'].running}", f"{self.modules['Interface'].reason}")
             table.add_row("Websocket", f"{self.modules['Websocket'].running}", f"{self.modules['Websocket'].reason}")
+            table.add_row("Stream", f"{self.modules['Stream'].running}", f"{self.modules['Stream'].reason}")
             self.progress.update(self.duration, completed=0, total=None)
             return table
 
