@@ -2,15 +2,15 @@
 import asyncio
 import os
 import time
-from logging import getLogger
 
 from pypresence import AioPresence, DiscordNotFound
 from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
 from rich.pretty import pretty_repr
 
-from src.listen.types import Song
-from src.module.types import Activity, Rpc, Status
+from src.listen.types import ListenWsData, Song
+from src.module import Module
+from src.modules.types import Activity, Rpc
 
 
 class AioPresence(AioPresence):
@@ -96,14 +96,20 @@ class Payload(Payload):
         return cls(payload, clear)
 
 
-class DiscordRichPresence:
+class DiscordRichPresence(Module):
     def __init__(self) -> None:
-        self.log = getLogger(__name__)
+        super().__init__()
+        self.loop = asyncio.new_event_loop()
         self.presence = AioPresence(1042365983957975080)
         self.is_arrpc: bool = False
-        self._data_queue = None
-        self.status = Status(False, "Initialising")
-    
+        self._data: Rpc
+
+    @property
+    def data(self) -> Rpc | None:
+        if not hasattr(self, '_data'):
+            return None
+        return self._data
+        
     @staticmethod
     async def _get_epoch_end_time(duration: int | float | None) -> int | None:
         if not duration:
@@ -157,41 +163,43 @@ class DiscordRichPresence:
     async def _get_button(self) -> list[dict[str, str]]:
         return [{"label": "Join radio", "url": "https://listen.moe/"}]
 
-    async def update_status(self, status: bool, reason: str = "") -> None:
-        self.status.running = status
-        self.status.reason = reason
-
     async def connect(self):
-        while True:
+        while self._running:
             try:
                 await self.presence.connect()
-                await self.update_status(True)
+                self.update_status(True)
             except DiscordNotFound:
-                await self.update_status(False, "Discord Not Found")
-                self.log.info("Discord Not Found")
+                self.update_status(False, "Discord Not Found")
+                self._log.info("Discord Not Found")
                 await asyncio.sleep(120)
             
             while self.status.running:
                 await asyncio.sleep(1)
-
-    async def update(self, data: Song | Rpc) -> Rpc:
-        if isinstance(data, Song):
-            self.data = Rpc(
-                status=self.status,
+            
+    def run(self):
+        self.loop.run_until_complete(self.connect())
+    
+    def update(self, data: ListenWsData):
+        self.loop.create_task(self.aio_update(data))
+    
+    async def aio_update(self, data: ListenWsData | Rpc) -> None:
+        if isinstance(data, ListenWsData):
+            song: Song = data.song
+            self._data = Rpc(
                 is_arrpc=self.is_arrpc,
-                detail=await self._sanitise(data.title),
-                state=await self._sanitise(data.artists_to_string()),
-                end=await self._get_epoch_end_time(data.duration),
-                large_image=await self._get_large_image(data),
-                large_text=await self._get_large_text(data),
-                small_image=await self._get_small_image(data),
-                small_text=await self._get_small_text(data),
+                detail=await self._sanitise(song.title),
+                state=await self._sanitise(song.artists_to_string()),
+                end=await self._get_epoch_end_time(song.duration),
+                large_image=await self._get_large_image(song),
+                large_text=await self._get_large_text(song),
+                small_image=await self._get_small_image(song),
+                small_text=await self._get_small_text(song),
                 buttons=await self._get_button(),
                 type=Activity.LISTENING if self.is_arrpc else Activity.PLAYING
             )
-        elif isinstance(data, Rpc):
-            self.data = data
-        self.log.info(f'Updating presence: {pretty_repr(self.data)}')
+        else:
+            self._data = data
+        self._log.info(f'Updating presence: {pretty_repr(self.data)}')
 
         try:
             res = await self.presence.update(
@@ -205,32 +213,36 @@ class DiscordRichPresence:
                 buttons=self.data.buttons,
                 type=self.data.type
             )
-            self.log.info(f'RPC output: {pretty_repr(res)}')
+            self._log.info(f'RPC output: {pretty_repr(res)}')
 
             if not res.get('data', None) and not self.is_arrpc:
-                self.log.info('arRPC detected')
+                self._log.info('arRPC detected')
                 self.is_arrpc = True
                 self.data.is_arrpc = True
                 self.data.type = Activity.LISTENING
-                await self.update(self.data)
+                await self.aio_update(self.data)
             elif res.get('data', None) and self.is_arrpc:
-                self.log.info('Using normal discord rpc')
+                self._log.info('Using normal discord rpc')
                 self.is_arrpc = False
                 self.data.is_arrpc = False
                 self.data.type = Activity.PLAYING
-                await self.update(self.data)
-            
-            return self.data
+                await self.aio_update(self.data)
 
         except BrokenPipeError:
-            await self.update_status(False, "BrokenPipeError")
-            self.log.info("[RPC] BrokenPipeError")
-            self.status.running(False, 'BrokenPipeError')
+            self.update_status(False, "BrokenPipeError")
+            self._log.info("[RPC] BrokenPipeError")
         except (ResponseTimeout, asyncio.exceptions.CancelledError, TimeoutError):
-            await self.update_status(False, "RPC Response Timeout")
-            self.log.info("[RPC] TimeoutError")
-            self.status.running(False, 'TimeoutError')
+            self.update_status(False, "RPC Response Timeout")
+            self._log.info("[RPC] TimeoutError")
         except Exception as exc:
-            await self.update_status(False, f"{exc}")
-            self.log.info("Exception has occured")
-            self.status.running(False, f'{exc}')
+            self.update_status(False, f"{exc}")
+            self._log.info("Exception has occured")
+
+
+if __name__ == "__main__":
+    loop = asyncio.new_event_loop()
+    e = DiscordRichPresence()
+    e.start()
+
+    while True:
+        input()

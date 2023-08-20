@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from time import time
 from typing import Any, Literal, Self, Type
 
-from src.module.types import Rpc
+from src.modules.types import Rpc
 
 
 @dataclass
@@ -33,6 +33,23 @@ class Album:
     name: str
     name_romaji: str | None
     image: str | None
+
+
+@dataclass
+class Requester:
+    uuid: str
+    username: str
+    display_name: str
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
+        if not data:
+            return None
+        return cls(
+            uuid=data['uuid'],
+            username=data['username'],
+            display_name=data['displayName']
+        )
 
 
 @dataclass
@@ -216,7 +233,7 @@ class ListenWsData:
             _t=data['t'],
             start_time=data['d']['startTime'],
             listener=data['d']['listeners'],
-            requester=data['d'].get('requester', None),
+            requester=Requester.from_data(data['d'].get('requester', None)),
             event=data['d'].get('event', None),
             song=Song.from_data(data['d']['song']),
             last_played=[Song.from_data(song) for song in data['d']['lastPlayed']]
@@ -225,13 +242,22 @@ class ListenWsData:
     _op: int
     _t: str
     song: Song
-    requester: str | None
+    requester: Requester | None
     event: str | None
     start_time: str
     last_played: list[Song]
     listener: int
     last_heartbeat: float = time()
     rpc: Rpc | None = None
+
+
+@dataclass
+class MPVData:
+    paused: bool | None
+    core_idle: bool
+    time_remaining: float | None
+    volume: float
+    ao_volume: float
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ class Logger(logging.Logger):
 
         logging.basicConfig(
             level=level,
-            format="[%(levelname)s] %(module)s: %(message)s",
+            format="[%(thread)d][%(levelname)s] %(threadName)s: %(message)s",
             handlers=[file_handler]
         )
 

@@ -19,7 +19,6 @@ class Activity:
     
 @dataclass
 class Rpc:
-    status: Status
     is_arrpc: bool
     detail: str
     state: str
