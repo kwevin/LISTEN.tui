@@ -131,9 +131,9 @@ class DiscordRichPresence(Module):
         fallback: str = 'fallback2' if not self.is_arrpc else "https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png"
         use_artist: bool = True
         
-        image = song.album_image()
+        image = song.album_image(url=True)
         if not image and use_artist:
-            image = song.artist_image()
+            image = song.artist_image(url=True)
             if not image:
                 return fallback if use_fallback else None
             return image
@@ -155,7 +155,7 @@ class DiscordRichPresence(Module):
         return await self._sanitise(large_text)
 
     async def _get_small_image(self, song: Song) -> str | None:
-        return song.artist_image()
+        return song.artist_image(url=True)
 
     async def _get_small_text(self, song: Song) -> str | None:
         return await self._sanitise(song.artists_to_string())

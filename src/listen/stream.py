@@ -1,11 +1,13 @@
 # pyright: reportUnknownMemberType=false, reportMissingTypeStubs=false
 import threading
 import time
+from logging import DEBUG, INFO, WARN
 from typing import Any
 
 import mpv
+from rich.pretty import pretty_repr
 
-from src.listen.types import MPVData
+from src.listen.types import DemuxerCacheState, MPVData, StreamMetadata
 from src.module import Module
 
 # class StreamPlayerVLC:
@@ -48,15 +50,29 @@ class StreamPlayerMPV(Module):
     def __init__(self) -> None:
         super().__init__()
         self.stream_url = "https://listen.moe/stream"
-        self.mpv_options = {'cache': False}
-        self.player = mpv.MPV(**self.mpv_options)
+        self.mpv_options = {
+            'ad': 'vorbis',
+            'cache': True,
+            'cache_secs': 20,
+            'cache_pause_initial': True,
+            'cache_pause_wait': 3,
+            'demuxer_lavf_linearize_timestamps': True
+        }
+        self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)  # pyright: ignore[reportGeneralTypeIssues]
         self._data: MPVData
         self.idle_count: int = 0
 
     @property
-    def data(self) -> MPVData:
+    def data(self) -> MPVData | None:
         return self._data
     
+    @property
+    def cache(self) -> DemuxerCacheState | None:
+        cache = self._get_value('demuxer_cache_state', None)
+        if not cache:
+            return None
+        return DemuxerCacheState.from_demuxer_cache_state(cache)
+
     @property
     def paused(self) -> bool | None:
         return bool(self._get_value('pause'))
@@ -68,13 +84,6 @@ class StreamPlayerMPV(Module):
     @property
     def core_idle(self) -> bool:
         return bool(self._get_value('core_idle'))
-    
-    @property
-    def time_remaining(self) -> float:
-        remaining = self._get_value('playtime_remaining')
-        if not remaining:
-            return -1
-        return float(remaining)
     
     @property
     def volume(self) -> int:
@@ -97,6 +106,21 @@ class StreamPlayerMPV(Module):
     @ao_volume.setter
     def ao_volume(self, volume: int):
         setattr(self.player, 'ao_volume', volume)
+
+    def _log_handler(self, loglevel: str, component: str, message: str):
+        match loglevel:
+            case 'info':
+                level = INFO
+            case 'warn':
+                level = WARN
+            case 'debug':
+                level = DEBUG
+            case _:
+                level = DEBUG
+        
+        if component == 'display-tags':
+            return
+        self._log.log(level=level, msg=f'[{component}] {message}')
     
     def _get_value(self, value: str, *args: Any) -> Any | None:
         try:
@@ -121,7 +145,15 @@ class StreamPlayerMPV(Module):
     def run(self):
         threading.Thread(target=self._restarter, name='MPV_restarter').start()
         self.player.play(self.stream_url)
-        self.player.wait_until_playing()
+        self.update_status(False, 'Buffering...')
+        
+        @self.player.property_observer('metadata')
+        def metadata(name: Any, new_value: Any):  # pyright: ignore[reportUnusedFunction]
+            if new_value:
+                self._data = MPVData(metadata=StreamMetadata.from_metadata(new_value))
+                self._log.debug(f'New Metadata: {pretty_repr(self._data.metadata)}')
+        
+        self.player.wait_for_property('metadata', cond=lambda val: True if val else False)  # pyright: ignore[reportUnknownLambdaType]
         self.update_status(True)
         self.player.wait_for_playback()
 

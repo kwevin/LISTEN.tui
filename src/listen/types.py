@@ -1,8 +1,11 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from time import time
 from typing import Any, Literal, Self, Type
 
 from src.modules.types import Rpc
+
+# sometime, js dot notation is what you need
 
 
 @dataclass
@@ -11,11 +14,17 @@ class Character:
 
 
 @dataclass
+class Cdn:
+    name: str
+    url: str
+
+
+@dataclass
 class Source:
     id: int
     name: str
     name_romaji: str | None
-    image: str | None
+    image: Cdn | None
 
 
 @dataclass
@@ -23,7 +32,7 @@ class Artist:
     id: int
     name: str
     name_romaji: str | None
-    image: str | None
+    image: Cdn | None
     character: list[Character] | None
 
 
@@ -32,7 +41,7 @@ class Album:
     id: int
     name: str
     name_romaji: str | None
-    image: str | None
+    image: Cdn | None
 
 
 @dataclass
@@ -82,22 +91,37 @@ class Song:
         )
     
     @staticmethod
-    def _append_cdn(type: Literal['albums', 'artists', 'sources'], value: str | None) -> str | None:
+    def _append_cdn(type: Literal['albums', 'artists', 'sources'], value: str | None) -> Cdn | None:
         if not value:
             return None
         
         cdn = "https://cdn.listen.moe"
         match type:
             case 'albums':
-                return f'{cdn}/covers/{value}'
+                url = f'{cdn}/covers/{value}'
             case 'artists':
-                return f'{cdn}/artists/{value}'
+                url = f'{cdn}/artists/{value}'
             case 'sources':
-                return f'{cdn}/source/{value}'
+                url = f'{cdn}/source/{value}'
+
+        return Cdn(name=value, url=url)
+    
+    @staticmethod
+    def _split_dakuten(word: str) -> str:
+        ten_ten_maru = ['\u3099', '\u309A']
+        for i in word:
+            if i == ten_ten_maru[0]:
+                i = '\u309B'
+            if i == ten_ten_maru[1]:
+                i = '\u309C'
+        return word
 
     @staticmethod
     def _get_title(song: dict[str, Any]) -> str:
-        return song.get('title', None)
+        title: str = song.get('title', None)
+        if title:
+            title = Song._split_dakuten(title)
+        return title
     
     @staticmethod
     def _get_sources(song: dict[str, Any]) -> list[Source] | None:
@@ -106,7 +130,7 @@ class Song:
             return None
         return [Source(
             id=source['id'],
-            name=source.get('name', None),
+            name=Song._split_dakuten(source.get('name')),
             name_romaji=source.get('nameRomaji', None),
             image=Song._append_cdn('sources', source.get('image', None))
         ) for source in sources]
@@ -118,7 +142,7 @@ class Song:
             return None
         return [Artist(
             id=artist['id'],
-            name=artist.get('name', None),
+            name=Song._split_dakuten(artist.get('name')),
             name_romaji=artist.get('nameRomaji', None),
             image=Song._append_cdn('artists', artist.get('image', None)),
             character=[Character(character['id']) for character in artist.get('characters')] if len(artist.get('characters')) != 0 else None
@@ -131,7 +155,7 @@ class Song:
             return None
         return [Album(
             id=album['id'],
-            name=album.get('name', None),
+            name=Song._split_dakuten(album.get('name', None)),
             name_romaji=album.get('nameRomaji', None),
             image=Song._append_cdn('albums', album.get('image', None))
         ) for album in albums]
@@ -167,22 +191,26 @@ class Song:
         return self._list_to_string(self.albums, romaji_first=romji_first, sep=sep)
     
     @staticmethod
-    def _get_image(lst: list[Artist] | list[Source] | list[Album] | None) -> str | None:
+    def _get_image(lst: list[Artist] | list[Source] | list[Album] | None, url: bool) -> str | None:
         if not lst:
             return None
         for item in lst:
-            if item.image:
-                return item.image
+            if not item.image:
+                break
+            if url:
+                return item.image.url
+            else:
+                return item.image.name
         return None
     
-    def artist_image(self) -> str | None:
-        return self._get_image(self.artists)
+    def artist_image(self, url: bool = False) -> str | None:
+        return self._get_image(self.artists, url)
 
-    def source_image(self) -> str | None:
-        return self._get_image(self.sources)
+    def source_image(self, url: bool = False) -> str | None:
+        return self._get_image(self.sources, url)
 
-    def album_image(self) -> str | None:
-        return self._get_image(self.albums)
+    def album_image(self, url: bool = False) -> str | None:
+        return self._get_image(self.albums, url)
 
     id: int
     title: str | None
@@ -231,7 +259,7 @@ class ListenWsData:
         return cls(
             _op=data['op'],
             _t=data['t'],
-            start_time=data['d']['startTime'],
+            start_time=datetime.fromisoformat(data['d']['startTime']),
             listener=data['d']['listeners'],
             requester=Requester.from_data(data['d'].get('requester', None)),
             event=data['d'].get('event', None),
@@ -244,7 +272,7 @@ class ListenWsData:
     song: Song
     requester: Requester | None
     event: str | None
-    start_time: str
+    start_time: datetime
     last_played: list[Song]
     listener: int
     last_heartbeat: float = time()
@@ -252,12 +280,81 @@ class ListenWsData:
 
 
 @dataclass
+class DemuxerCacheState:
+    """
+    `cache_end`: total demuxer cache time (seconds)\n
+    `cache_duration`: amount of cache (seconds)\n
+    `fw_byte`: no. bytes buffered size from current decoding pos\n
+    `total_bytes`: sum of cached seekable range\n
+    `seekable_start`: approx timestamp of start of buffered range
+    `seekable_end`: approx timestamp of end of buffered range\n
+    """
+    cache_end: float
+    cache_duration: float
+    fw_byte: int
+    total_bytes: int
+    seekable_start: float
+    seekable_end: float | None
+
+    @classmethod
+    def from_demuxer_cache_state(cls: Type[Self], data: dict[str, Any]) -> Self:
+        cache_end = float(data.get('cache-end', -1))
+        cache_duration = float(data.get('cache-duration', -1))
+        fw_byte = int(data.get('fw-bytes', -1))
+        total_bytes = int(data.get('total-bytes', -1))
+        seekable_start = float(data.get('reader-pts', -1))
+        seekable_ranges = data.get('seekable-ranges')
+        
+        if seekable_ranges:
+            seekable_end = float(seekable_ranges[0].get('end', -1))
+        else:
+            seekable_end = None
+
+        return cls(cache_end, cache_duration, fw_byte, total_bytes, seekable_start, seekable_end)
+
+
+@dataclass
+class StreamMetadata:
+    start: datetime
+    track: str | None
+    genre: str | None
+    title: str | None
+    artist: str | None
+    year: str | None
+    date: str | None
+    album: str | None
+    comment: str | None
+    _ENCODER: str
+    _icy_br: str
+    _icy_genre: str
+    _icy_name: str
+    _icy_pub: str
+    _icy_url: str
+
+    @classmethod
+    def from_metadata(cls: Type[Self], data: dict[str, Any]) -> Self:
+        return cls(
+            start=datetime.now(timezone.utc),
+            track=data.get('track', None),
+            genre=data.get('genre', None),
+            title=data.get('title', None),
+            artist=data.get('artist', None),
+            year=data.get('year', None),
+            date=data.get('date', None),
+            album=data.get('album', None),
+            comment=data.get('comment', None),
+            _ENCODER=data['ENCODER'],
+            _icy_br=data['icy-br'],
+            _icy_genre=data['icy-genre'],
+            _icy_name=data['icy-name'],
+            _icy_pub=data['icy-pub'],
+            _icy_url=data['icy-url'],
+        )
+
+
+@dataclass
 class MPVData:
-    paused: bool | None
-    core_idle: bool
-    time_remaining: float | None
-    volume: float
-    ao_volume: float
+    metadata: StreamMetadata
 
 
 if __name__ == "__main__":

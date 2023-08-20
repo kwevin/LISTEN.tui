@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Thread
 
@@ -10,7 +10,7 @@ from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
                            SpinnerColumn, Task, TextColumn)
-from rich.spinner import Spinner
+# from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
@@ -53,6 +53,7 @@ class Main(Thread):
         self.log = Logger.create_logger(True)
         self.running_modules: list[Module] = list()
         self.start_time = time.time()
+        self.first_boot: bool = True
 
         # self.controls: Controls
         self.ws: ListenWebsocket
@@ -90,30 +91,46 @@ class Main(Thread):
 
     def run(self):
         self.setup()
-        with Live(self.render()) as self.live:
+        refresh_per_second = 8
+        with Live(self.render(), refresh_per_second=refresh_per_second) as self.live:
             while True:
                 self.live.update(self.render())
-                time.sleep(1)
+                time.sleep(1 / refresh_per_second)
 
     def terminate(self):
         self.end()
+
+    def calc_delay(self) -> float:
+        ws_start = self.ws.data.start_time
+        if self.player.data:
+            audio_start = self.player.data.metadata.start
+        else:
+            return 0
+        
+        diff = audio_start - ws_start
+
+        return diff.total_seconds()
     
     def render(self) -> Layout | Table:
         if not all([i.status.running for i in self.running_modules]):
-            table = Table(expand=True)
+            table = Table(expand=False)
+            table.add_column("Module")
+            table.add_column("Status")
+            table.add_column("Reason")
             for i in self.running_modules:
                 table.add_row(i.name, f'{i.status.running}', i.status.reason)
             return table
+        
         self.layout = Layout(name='main')
         self.layout.split_column(
             Layout(Panel(self.header()), name='header', size=3),
             Layout(Panel(self.info()), name='info', minimum_size=16),
-            Layout(Panel(self.place_holder_controller()), name='info', minimum_size=10)
+            Layout(Panel(self.place_holder_controller(), title='Controls'), name='info', minimum_size=10)
         )
         return self.layout
 
     def header(self) -> Text:
-        return Text(f'Listen.Moe CLI ({self.ws.data.listener})', justify='center')
+        return Text(f'Listen.Moe CLI (󰋋 {self.ws.data.listener})', justify='center')
 
     def info(self) -> Layout:
         info = Layout()
@@ -137,15 +154,15 @@ class Main(Thread):
         table.add_row("Album", self.ws.data.song.albums_to_string())
         table.add_row("Album Image", self.ws.data.song.album_image())
         table.add_row("Artist Image", self.ws.data.song.artist_image())
+
         if self.ws.data.song.duration:
+            completed = (datetime.now(timezone.utc) - self.ws.data.start_time).total_seconds()
             duration = timedelta(seconds=self.ws.data.song.duration)
-            completed = round(self.ws.data.song.duration - (self.ws.data.song.time_end - time.time()))
+            # completed = round(self.ws.data.song.duration - (self.ws.data.song.time_end - time.time()))
         else:
             duration = None
             completed = round(time.time() - self.ws.data.song.time_end)
-
         table.add_row("Duration", f"{duration}")
-
         self.duration_progress.update(self.duration,
                                       completed=completed,
                                       total=self.ws.data.song.duration if self.ws.data.song.duration else None)
@@ -162,15 +179,23 @@ class Main(Thread):
         else:
             vol_icon = '󰖁 '
         
-        stream.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
-        stream.add_row(f"{vol_icon} {self.player.volume}")
-        # stream.add_row(f"  {self.player.time_remaining:.2f}")
-        stream.add_row(Spinner(name='arc', text=Text(f" {self.player.time_remaining:.2f}")))
-        # stream.add_row(
-        #     f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}",
-        #     f"{vol_icon} {self.player.volume}",
-        #     f"  {self.player.time_remaining:.2f}"
-        # )
+        if self.player.cache:
+            cache_duration = self.player.cache.cache_duration
+            cache_size = self.player.cache.fw_byte
+        else:
+            cache_duration = -1
+            cache_size = 0
+        # stream.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
+        # stream.add_row(f"{vol_icon} {self.player.volume}")
+        # stream.add_row(f"  {cache_duration:.2f}s/{cache_size}")
+        # stream.add_row(Spinner(name='arc', text=Text(f" {self.player.time_remaining:.2f}")))
+
+        stream.add_row(
+            f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}",
+            f"{vol_icon} {self.player.volume}",
+            f"  {cache_duration:.2f}s/{cache_size}",
+            f"Offset: {self.calc_delay():.2f}s",
+        )
 
         return Group(table, self.duration_progress, Padding(stream, (1, 0, 0, 0)))
 
