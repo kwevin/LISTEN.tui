@@ -41,21 +41,38 @@ class InputHandler(Module):
         self.update_status(True)
         while self._running:
             try:
-                k = readkey()
-                if k in self.config.keybind.lower_volume:
-                    self.main.player.lower_volume(self.config.player.volume_step)
-                if k in self.config.keybind.raise_volume:
-                    self.main.player.raise_volume(self.config.player.volume_step)
-                if k in self.config.keybind.lower_volume_fine:
-                    self.main.player.lower_volume(1)
-                if k in self.config.keybind.raise_volume_fine:
-                    self.main.player.raise_volume(1)
-                if k in self.config.keybind.favourite_song:
-                    self.main.favourite_song()
-                if k in self.config.keybind.restart_player:
-                    self.main.player.restart()
-                if k in self.config.keybind.play_pause:
-                    self.main.player.play_pause()
+                match readkey():
+                    case self.config.keybind.lower_volume:
+                        self.main.player.lower_volume(self.config.player.volume_step)
+                    case self.config.keybind.raise_volume:
+                        self.main.player.raise_volume(self.config.player.volume_step)
+                    case self.config.keybind.lower_volume_fine:
+                        self.main.player.lower_volume(1)
+                    case self.config.keybind.raise_volume_fine:
+                        self.main.player.raise_volume(1)
+                    case self.config.keybind.favourite_song:
+                        self.main.favourite_song()
+                    case self.config.keybind.restart_player:
+                        self.main.player.restart()
+                    case self.config.keybind.play_pause:
+                        self.main.player.play_pause()
+                    case _:
+                        pass
+                # k = readkey()
+                # if k in self.config.keybind.lower_volume:
+                #     self.main.player.lower_volume(self.config.player.volume_step)
+                # if k in self.config.keybind.raise_volume:
+                #     self.main.player.raise_volume(self.config.player.volume_step)
+                # if k in self.config.keybind.lower_volume_fine:
+                #     self.main.player.lower_volume(1)
+                # if k in self.config.keybind.raise_volume_fine:
+                #     self.main.player.raise_volume(1)
+                # if k in self.config.keybind.favourite_song:
+                #     self.main.favourite_song()
+                # if k in self.config.keybind.restart_player:
+                #     self.main.player.restart()
+                # if k in self.config.keybind.play_pause:
+                #     self.main.player.play_pause()
             except KeyboardInterrupt:
                 _exit(1)
 
@@ -316,11 +333,11 @@ class Main(Thread):
 
 
 if __name__ == "__main__":
-    _dev = Path().resolve().joinpath('devconf.toml')
-    if _dev:
+    _dev = Path().resolve().joinpath('devconf.toml').resolve()
+    if _dev.is_file():
         Config(_dev)
     else:
-        Config(Path().resolve().joinpath('config.toml'))
+        Config(Path().resolve().joinpath('config.toml').resolve())
     _main = Main()
     _main.start()
     _main.join()

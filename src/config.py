@@ -14,13 +14,20 @@ class ConfigNotFoundException(Exception):
 
 @dataclass
 class Keybind:
-    play_pause: str | list[str] = field(default_factory=lambda: ['p', '${SPACE}'])
-    lower_volume: str | list[str] = '${DOWN}'
-    raise_volume: str | list[str] = '${UP}'
-    lower_volume_fine: str | list[str] = '${LEFT}'
-    raise_volume_fine: str | list[str] = '${RIGHT}'
-    favourite_song: str | list[str] = 'f'
-    restart_player: str | list[str] = 'r'
+    # play_pause: str | list[str] = field(default_factory=lambda: ['p', '${SPACE}'])
+    # lower_volume: str | list[str] = '${DOWN}'
+    # raise_volume: str | list[str] = '${UP}'
+    # lower_volume_fine: str | list[str] = '${LEFT}'
+    # raise_volume_fine: str | list[str] = '${RIGHT}'
+    # favourite_song: str | list[str] = 'f'
+    # restart_player: str | list[str] = 'r'
+    play_pause: str = '${SPACE}'
+    lower_volume: str = '${DOWN}'
+    raise_volume: str = '${UP}'
+    lower_volume_fine: str = '${LEFT}'
+    raise_volume_fine: str = '${RIGHT}'
+    favourite_song: str = 'f'
+    restart_player: str = 'r'
 
     def sub_key_to_str(self) -> Self:
         s = {k: v for k, v in key.__dict__.items() if "__" not in k}
@@ -30,13 +37,13 @@ class Keybind:
                 e = Template(k)
                 n = e.substitute(s)
                 setattr(self, i.name, n)
-            if isinstance(k, list):
-                for idx, t in enumerate(k):
-                    if "$" in t:
-                        e = Template(t)
-                        n = e.substitute(s)
-                        k[idx] = n
-                        setattr(self, i.name, k)
+            # if isinstance(k, list):
+            #     for idx, t in enumerate(k):
+            #         if "$" in t:
+            #             e = Template(t)
+            #             n = e.substitute(s)
+            #             k[idx] = n
+            #             setattr(self, i.name, k)
         return self
 
 

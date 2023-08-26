@@ -1,8 +1,5 @@
 [keybind]
-play_pause = [
-    "p",
-    "${SPACE}",
-]
+play_pause = "${SPACE}"
 lower_volume = "${DOWN}"
 raise_volume = "${UP}"
 lower_volume_fine = "${LEFT}"
