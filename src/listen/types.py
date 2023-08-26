@@ -1,97 +1,27 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import time
 from typing import Any, Literal, Self, Type
 
 from src.modules.types import Rpc
 
-# sometime, js dot notation is what you need
-
 
 @dataclass
-class Character:
-    id: int
-
-
-@dataclass
-class Cdn:
+class Link:
     name: str
     url: str
 
-
-@dataclass
-class Source:
-    id: int
-    name: str
-    name_romaji: str | None
-    image: Cdn | None
-
-
-@dataclass
-class Artist:
-    id: int
-    name: str
-    name_romaji: str | None
-    image: Cdn | None
-    character: list[Character] | None
-
-
-@dataclass
-class Album:
-    id: int
-    name: str
-    name_romaji: str | None
-    image: Cdn | None
-
-
-@dataclass
-class Requester:
-    uuid: str
-    username: str
-    display_name: str
-
     @classmethod
-    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
-        if not data:
-            return None
-        return cls(
-            uuid=data['uuid'],
-            username=data['username'],
-            display_name=data['displayName']
-        )
+    def from_name(
+        cls: Type[Self],
+        type: Literal[
+            'albums',
+            'artists',
+            'sources'
+        ],
+        value: str | None
+    ) -> Self | None:
 
-
-@dataclass
-class Song:
-
-    # def __init__(self, song: dict[str, Any]) -> None:
-    #     self.id = song['id']
-    #     self.duration = song.get('duration', None)
-    #     self.time_end = round(time() + self.duration) if self.duration else round(time())
-    #     self.title = Song._get_title(song)
-    #     self.sources = Song._get_sources(song)
-    #     self.artists = Song._get_artists(song)
-    #     self.albums = Song._get_albums(song)
-    #     self.characters = Song._get_characters(song)
-
-    #     return
-
-    @classmethod
-    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
-        duration = data.get('duration', None)
-        return cls(
-            id=data['id'],
-            duration=duration,
-            time_end=round(time() + duration) if duration else round(time()),
-            title=Song._get_title(data),
-            sources=Song._get_sources(data),
-            artists=Song._get_artists(data),
-            albums=Song._get_albums(data),
-            characters=Song._get_characters(data),
-        )
-    
-    @staticmethod
-    def _append_cdn(type: Literal['albums', 'artists', 'sources'], value: str | None) -> Cdn | None:
         if not value:
             return None
         
@@ -104,23 +34,128 @@ class Song:
             case 'sources':
                 url = f'{cdn}/source/{value}'
 
-        return Cdn(name=value, url=url)
+        return cls(name=value, url=url)
+
+
+@dataclass
+class User:
+    uuid: str
+    username: str
+    display_name: str
+    bio: str | None
+    link: str = field(init=False)
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/u/{self.username}'
+
+
+@dataclass
+class CurrentUser(User):
+    token: str
+
+
+@dataclass
+class Album:
+    id: int
+    name: str | None
+    name_romaji: str | None
+    image: Link | None
+    link: str = field(init=False)
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/albums/{self.id}'
+
+
+@dataclass
+class Artist:
+    id: int
+    name: str | None
+    name_romaji: str | None
+    image: Link | None
+    character: list["Character"] | None
+    link: str = field(init=False)
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/artists/{self.id}'
+
+
+@dataclass
+class Character:
+    id: int
+    name: str | None = None
+    name_romaji: str | None = None
+    link: str = field(init=False)
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/characters/{self.id}'
+
+
+@dataclass
+class Source:
+    id: int
+    name: str | None
+    name_romaji: str | None
+    image: Link | None
+    link: str = field(init=False)
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/sources/{self.id}'
+
+
+@dataclass
+class Requester:
+    uuid: str
+    username: str
+    display_name: str
+    link: str = field(init=False)
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
+        if not data:
+            return None
+        return cls(
+            uuid=data['uuid'],
+            username=data['username'],
+            display_name=data['displayName']
+        )
+
+    def __post_init__(self):
+        self.link = f'https://listen.moe/u/{self.username}'
+
+
+@dataclass
+class Song:
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        duration = data.get('duration', None)
+        kwargs = {
+            'id': data['id'],
+            'duration': duration,
+            'time_end': round(time() + duration) if duration else round(time()),
+            'title': Song._get_title(data),
+            'sources': Song._get_sources(data),
+            'artists': Song._get_artists(data),
+            'albums': Song._get_albums(data),
+            'characters': Song._get_characters(data),
+        }
+        if (p := data.get('played', None)):
+            kwargs.update({'played': p})
+        if (p := data.get('titleRomaji', None)):
+            kwargs.update({'title_romaji': p})
+    
+        return cls(**kwargs)  # pyright: ignore
     
     @staticmethod
-    def _split_dakuten(word: str) -> str:
-        ten_ten_maru = ['\u3099', '\u309A']
-        for i in word:
-            if i == ten_ten_maru[0]:
-                i = '\u309B'
-            if i == ten_ten_maru[1]:
-                i = '\u309C'
-        return word
+    def _split_dakuten(word: str | None) -> str | None:
+        if not word:
+            return None
+        return word.replace('\u3099', '\u309B').replace('\u309A', '\u309C')
 
     @staticmethod
     def _get_title(song: dict[str, Any]) -> str:
         title: str = song.get('title', None)
         if title:
-            title = Song._split_dakuten(title)
+            title = Song._split_dakuten(title)  # pyright: ignore[reportGeneralTypeIssues]
         return title
     
     @staticmethod
@@ -128,11 +163,12 @@ class Song:
         sources = song.get('sources', None)
         if not sources:
             return None
+
         return [Source(
             id=source['id'],
-            name=Song._split_dakuten(source.get('name')),
+            name=Song._split_dakuten(source.get('name', None)),
             name_romaji=source.get('nameRomaji', None),
-            image=Song._append_cdn('sources', source.get('image', None))
+            image=Link.from_name('sources', source.get('image', None))
         ) for source in sources]
 
     @staticmethod
@@ -142,9 +178,9 @@ class Song:
             return None
         return [Artist(
             id=artist['id'],
-            name=Song._split_dakuten(artist.get('name')),
+            name=Song._split_dakuten(artist.get('name', None)),
             name_romaji=artist.get('nameRomaji', None),
-            image=Song._append_cdn('artists', artist.get('image', None)),
+            image=Link.from_name('artists', artist.get('image', None)),
             character=[Character(character['id']) for character in artist.get('characters')] if len(artist.get('characters')) != 0 else None
         ) for artist in artists]
     
@@ -157,7 +193,7 @@ class Song:
             id=album['id'],
             name=Song._split_dakuten(album.get('name', None)),
             name_romaji=album.get('nameRomaji', None),
-            image=Song._append_cdn('albums', album.get('image', None))
+            image=Link.from_name('albums', album.get('image', None))
         ) for album in albums]
     
     @staticmethod
@@ -165,7 +201,11 @@ class Song:
         characters = song.get('characters', None)
         if not characters:
             return None
-        return [Character(character['id']) for character in characters]
+        return [Character(
+            id=character['id'],
+            name=Song._split_dakuten(character.get('name', None)),
+            name_romaji=character.get('nameRomaji', None)
+        ) for character in characters]
     
     @staticmethod
     def _list_to_string(lst: list[Artist] | list[Source] | list[Album] | None, romaji_first: bool = True, sep: str = ', ') -> str | None:
@@ -177,12 +217,33 @@ class Song:
                 name = item.name_romaji if item.name_romaji else item.name
             else:
                 name = item.name
-
-            lst_string.append(name)
+            if name:
+                lst_string.append(name)
         return f"{sep}".join(lst_string)
 
     def artists_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
-        return self._list_to_string(self.artists, romaji_first=romaji_first, sep=sep)
+        if not self.artists:
+            return None
+        name = None
+        char_name = None
+        lst_string: list[str] = []
+        for artist in self.artists:
+            if romaji_first:
+                name = artist.name_romaji if artist.name_romaji else artist.name
+            else:
+                name = artist.name
+            if artist.character and self.characters:
+                for character in self.characters:
+                    if artist.character[0].id == character.id:
+                        if romaji_first:
+                            char_name = character.name_romaji if character.name_romaji else character.name
+                        else:
+                            char_name = character.name
+            if name and char_name:
+                lst_string.append(f'{char_name} (CV: {name})')
+            elif name:
+                lst_string.append(name)
+        return f"{sep}".join(lst_string)
     
     def sources_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
         return self._list_to_string(self.sources, romaji_first=romaji_first, sep=sep)
@@ -214,38 +275,18 @@ class Song:
 
     id: int
     title: str | None
-    sources: list[Source] | None
-    artists: list[Artist] | None
-    characters: list[Character] | None
-    albums: list[Album] | None
+    sources: list["Source"] | None
+    artists: list["Artist"] | None
+    characters: list["Character"] | None
+    albums: list["Album"] | None
     duration: int | None
     time_end: int
+    played: int | None = None
+    title_romaji: str | None = None
 
 
 @dataclass
 class ListenWsData:
-
-    # def __init__(self,
-    #              data: dict[str, Any],
-    #              use_artist_in_cover: bool = True,
-    #              ) -> None:
-
-    #     self._data = data
-    #     self._use_artist_in_cover = use_artist_in_cover
-        
-    #     self._op = data['op']
-    #     self._t = data['t']
-    #     self.start_time = data['d']['startTime']
-    #     self.listener = data['d']['listeners']
-    #     self.requester = data['d'].get('requester', None)
-    #     self.event = data['d'].get('event', None)
-
-    #     self.song = Song(data['d']['song'])
-    #     self.last_played: list[Song] = []
-    #     for song in data['d']['lastPlayed']:
-    #         self.last_played.append(Song(song))
-    #     return
-    
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         """
@@ -273,7 +314,7 @@ class ListenWsData:
     requester: Requester | None
     event: str | None
     start_time: datetime
-    last_played: list[Song]
+    last_played: list["Song"]
     listener: int
     last_heartbeat: float = time()
     rpc: Rpc | None = None
@@ -314,7 +355,7 @@ class DemuxerCacheState:
 
 
 @dataclass
-class StreamMetadata:
+class MPVData:
     start: datetime
     track: str | None
     genre: str | None
@@ -350,11 +391,6 @@ class StreamMetadata:
             _icy_pub=data['icy-pub'],
             _icy_url=data['icy-url'],
         )
-
-
-@dataclass
-class MPVData:
-    metadata: StreamMetadata
 
 
 if __name__ == "__main__":

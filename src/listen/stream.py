@@ -7,7 +7,8 @@ from typing import Any
 import mpv
 from rich.pretty import pretty_repr
 
-from src.listen.types import DemuxerCacheState, MPVData, StreamMetadata
+from src.config import Config
+from src.listen.types import DemuxerCacheState, MPVData
 from src.module import Module
 
 # class StreamPlayerVLC:
@@ -49,15 +50,10 @@ from src.module import Module
 class StreamPlayerMPV(Module):
     def __init__(self) -> None:
         super().__init__()
+        self.config = Config.get_config()
         self.stream_url = "https://listen.moe/stream"
-        self.mpv_options = {
-            'ad': 'vorbis',
-            'cache': True,
-            'cache_secs': 20,
-            'cache_pause_initial': True,
-            'cache_pause_wait': 3,
-            'demuxer_lavf_linearize_timestamps': True
-        }
+        self.mpv_options = self.config.player.mpv_options.copy()
+        self.mpv_options['volume'] = self.config.player.last_volume
         self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)  # pyright: ignore[reportGeneralTypeIssues]
         self._data: MPVData
         self.idle_count: int = 0
@@ -95,6 +91,7 @@ class StreamPlayerMPV(Module):
     @volume.setter
     def volume(self, volume: int):
         setattr(self.player, 'volume', volume)
+        self.config.update('player', 'last_volume', volume)
     
     @property
     def ao_volume(self) -> float:
@@ -143,15 +140,15 @@ class StreamPlayerMPV(Module):
             time.sleep(1)
 
     def run(self):
-        threading.Thread(target=self._restarter, name='MPV_restarter').start()
+        threading.Thread(target=self._restarter, name='MPV_restarter', args=(self.config.player.restart_timeout, )).start()
         self.player.play(self.stream_url)
         self.update_status(False, 'Buffering...')
         
         @self.player.property_observer('metadata')
         def metadata(name: Any, new_value: Any):  # pyright: ignore[reportUnusedFunction]
             if new_value:
-                self._data = MPVData(metadata=StreamMetadata.from_metadata(new_value))
-                self._log.debug(f'New Metadata: {pretty_repr(self._data.metadata)}')
+                self._data = MPVData.from_metadata(new_value)
+                self._log.debug(f'New Metadata: {pretty_repr(self._data)}')
         
         self.player.wait_for_property('metadata', cond=lambda val: True if val else False)  # pyright: ignore[reportUnknownLambdaType]
         self.update_status(True)
@@ -174,6 +171,12 @@ class StreamPlayerMPV(Module):
         else:
             self.pause()
 
+    def raise_volume(self, vol: int = 10):
+        self.volume += vol
+
+    def lower_volume(self, vol: int = 10):
+        self.volume -= vol
+
     def set_volume(self, volume: int):
         self.volume = volume
 
@@ -182,7 +185,7 @@ class StreamPlayerMPV(Module):
 
 
 if __name__ == "__main__":
-    e = StreamPlayerMPV()
+    e = StreamPlayerMPV()  # pyright: ignore
     e.start()
     while True:
         try:

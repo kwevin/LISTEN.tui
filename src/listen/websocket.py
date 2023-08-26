@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 import websockets.client as websockets
@@ -53,13 +54,15 @@ class ListenWebsocket(Module):
                         case 0:
                             heartbeat = self.ws_data['d']['heartbeat'] / 1000
                             self.loop.create_task(self.ws_keepalive(heartbeat))
-                            self.update_status(True)
                             
                         case 1:
                             self._log.info(f"Data Received: {pretty_repr(self.ws_data)}")
                             self._data = ListenWsData.from_data(self.ws_data)
                             self._log.info(f"Data Formatted: {pretty_repr(self.data)}")
-                            await self.update_update_able()
+                            if not self._data.last_played[0].duration:
+                                self._data.start_time = datetime.now(timezone.utc)
+                            self.update_status(True)
+                            asyncio.create_task(self.update_update_able())
                         case 10:
                             self._data.last_heartbeat = time.time()
 

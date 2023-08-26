@@ -4,3 +4,4 @@
 *.dll
 __pycache__
 logs
+devconf.toml

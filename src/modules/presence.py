@@ -8,6 +8,7 @@ from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
 from rich.pretty import pretty_repr
 
+from src.config import Config
 from src.listen.types import ListenWsData, Song
 from src.module import Module
 from src.modules.types import Activity, Rpc
@@ -102,6 +103,7 @@ class DiscordRichPresence(Module):
         self.loop = asyncio.new_event_loop()
         self.presence = AioPresence(1042365983957975080)
         self.is_arrpc: bool = False
+        self.config = Config.get_config()
         self._data: Rpc
 
     @property
@@ -117,7 +119,7 @@ class DiscordRichPresence(Module):
         return int(round(time.time() + duration))
 
     async def _sanitise(self, string: str | None) -> str:
-        default: str = " ♪"
+        default: str = self.config.rpc.default_placeholder
 
         if len(string) < 2:
             string += default
@@ -127,9 +129,9 @@ class DiscordRichPresence(Module):
         return string.strip()
     
     async def _get_large_image(self, song: Song) -> str | None:
-        use_fallback: bool = True
-        fallback: str = 'fallback2' if not self.is_arrpc else "https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png"
-        use_artist: bool = True
+        use_fallback: bool = self.config.rpc.use_fallback
+        fallback: str = self.config.rpc.fallback
+        use_artist: bool = self.config.rpc.use_artist
         
         image = song.album_image(url=True)
         if not image and use_artist:
@@ -169,7 +171,8 @@ class DiscordRichPresence(Module):
                 await self.presence.connect()
                 self.update_status(True)
             except DiscordNotFound:
-                self.update_status(False, "Discord Not Found")
+                self.update_status(True)
+                # self.update_status(False, "Discord Not Found")
                 self._log.info("Discord Not Found")
                 await asyncio.sleep(120)
             
