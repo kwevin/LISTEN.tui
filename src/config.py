@@ -53,6 +53,7 @@ class System:
     password: str = ''
     token: str = ''
     debug: bool = False
+    instance_lock: bool = False
 
 
 @dataclass

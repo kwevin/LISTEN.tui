@@ -12,6 +12,7 @@ username = ""
 password = ""
 token = ""
 debug = false
+instance_lock = false
 
 [rpc]
 enable_rpc = true

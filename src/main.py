@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime, timedelta, timezone
 from os import _exit  # pyright: ignore
@@ -5,6 +6,7 @@ from pathlib import Path
 from threading import Thread
 from typing import Literal
 
+from psutil import pid_exists
 from readchar import readkey
 from rich.console import Console, Group
 from rich.layout import Layout
@@ -58,21 +60,6 @@ class InputHandler(Module):
                         self.main.player.play_pause()
                     case _:
                         pass
-                # k = readkey()
-                # if k in self.config.keybind.lower_volume:
-                #     self.main.player.lower_volume(self.config.player.volume_step)
-                # if k in self.config.keybind.raise_volume:
-                #     self.main.player.raise_volume(self.config.player.volume_step)
-                # if k in self.config.keybind.lower_volume_fine:
-                #     self.main.player.lower_volume(1)
-                # if k in self.config.keybind.raise_volume_fine:
-                #     self.main.player.raise_volume(1)
-                # if k in self.config.keybind.favourite_song:
-                #     self.main.favourite_song()
-                # if k in self.config.keybind.restart_player:
-                #     self.main.player.restart()
-                # if k in self.config.keybind.play_pause:
-                #     self.main.player.play_pause()
             except KeyboardInterrupt:
                 _exit(1)
 
@@ -102,7 +89,10 @@ class Main(Thread):
     def __init__(self) -> None:
         super().__init__()
         self.config = Config.get_config()
+        if self.config.system.instance_lock:
+            self.check_instance_lock()
         self.log = Logger.create_logger(self.config.system.debug)
+        self.running: bool = True
         self.running_modules: list[Module] = list()
         self.start_time = time.time()
         self.update_counter: int = 0
@@ -119,6 +109,20 @@ class Main(Thread):
                                           BarColumn(bar_width=None),
                                           MofNCompleteColumnWithPercentage(), expand=True)
         self.duration = self.duration_progress.add_task('Duration', total=None)
+
+    def check_instance_lock(self):
+        instance_lock = Path().resolve().joinpath('_instance.lock')
+        if instance_lock.is_file():
+            with open(instance_lock, 'r') as lock:
+                pid = lock.readline().rstrip()
+            if pid_exists(int(pid)):
+                raise Exception("Another instance is already running")
+        
+        with open(instance_lock, 'w') as lock:
+            lock.write(f'{os.getpid()}')
+    
+    def free_instance_lock(self):
+        os.remove(Path().resolve().joinpath('_instance.lock'))
 
     def update(self, _: ListenWsData):
         self.update_counter += 1
@@ -173,13 +177,10 @@ class Main(Thread):
         self.setup()
         refresh_per_second = 8
         with Live(self.render(), refresh_per_second=refresh_per_second) as self.live:
-            while True:
+            while self.running:
                 self.live.update(self.render())
                 time.sleep(1 / refresh_per_second)
-
-    def terminate(self):
-        for modules in self.running_modules:
-            modules.terminate()
+        return
 
     def calc_delay(self) -> float:
         if self.update_counter <= 1:
