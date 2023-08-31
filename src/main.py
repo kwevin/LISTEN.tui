@@ -7,11 +7,10 @@ from threading import Thread
 from typing import Literal
 
 from psutil import pid_exists
-from readchar import readkey
+from readchar import key, readkey
 from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
-from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
                            SpinnerColumn, Task, TextColumn)
@@ -34,6 +33,8 @@ class InputHandler(Module):
         super().__init__()
         self.main = main
         self.config = self.main.config
+        self.kb = self.config.keybind
+        self.pl = self.main.player
     
     @property
     def data(self):
@@ -44,23 +45,35 @@ class InputHandler(Module):
         while self._running:
             try:
                 match readkey():
-                    case self.config.keybind.lower_volume:
-                        self.main.player.lower_volume(self.config.player.volume_step)
-                    case self.config.keybind.raise_volume:
-                        self.main.player.raise_volume(self.config.player.volume_step)
-                    case self.config.keybind.lower_volume_fine:
-                        self.main.player.lower_volume(1)
-                    case self.config.keybind.raise_volume_fine:
-                        self.main.player.raise_volume(1)
-                    case self.config.keybind.favourite_song:
+                    case self.kb.lower_volume:
+                        self.pl.lower_volume(self.config.player.volume_step)
+                    case self.kb.raise_volume:
+                        self.pl.raise_volume(self.config.player.volume_step)
+                    case self.kb.lower_volume_fine:
+                        self.pl.lower_volume(1)
+                    case self.kb.raise_volume_fine:
+                        self.pl.raise_volume(1)
+                    case self.kb.favourite_song:
                         self.main.favourite_song()
-                    case self.config.keybind.restart_player:
-                        self.main.player.restart()
-                    case self.config.keybind.play_pause:
-                        self.main.player.play_pause()
+                    case self.kb.restart_player:
+                        self.pl.restart()
+                    case self.kb.play_pause:
+                        self.pl.play_pause()
+                    case self.kb.seek_to_end:
+                        self.pl.seek_to_end()
+                    case 'i':
+                        l: list[str] = []
+                        k = ''
+                        while k != key.ENTER and k != key.ESC:
+                            k = readkey()
+                            l.append(k)
+                            self.main.cmd_input = "".join(l).rstrip()
+                        # cmd = "".join(l).rstrip()
                     case _:
                         pass
             except KeyboardInterrupt:
+                if self.config.system.instance_lock:
+                    self.main.free_instance_lock()
                 _exit(1)
 
 
@@ -76,6 +89,11 @@ class MofNCompleteColumnWithPercentage(MofNCompleteColumn):
             return Text(
                 f"{percentage:.2f}%",
                 style="progress.download"
+            )
+        elif total is None:
+            return Text(
+                f"{completed:{total_width}d}{self.separator}?",
+                style="progress.download",
             )
         else:
             return Text(
@@ -97,6 +115,10 @@ class Main(Thread):
         self.start_time = time.time()
         self.update_counter: int = 0
         self.is_favorite: Literal[0, 1, 2] = 0
+        self.last_render_time: float = 0
+        self._start: float = 0
+        self.cmd_mode: bool = False
+        self.cmd_input: str = ''
 
         self.ws: ListenWebsocket
         self.player: StreamPlayerMPV
@@ -124,7 +146,7 @@ class Main(Thread):
     def free_instance_lock(self):
         os.remove(Path().resolve().joinpath('_instance.lock'))
 
-    def update(self, _: ListenWsData):
+    def increment_count(self, _: ListenWsData):
         self.update_counter += 1
     
     def check_favourite(self, data: ListenWsData):
@@ -159,7 +181,7 @@ class Main(Thread):
         self.player = StreamPlayerMPV()
         self.running_modules.append(self.player)
 
-        self.ws.on_data_update(self.update)
+        self.ws.on_data_update(self.increment_count)
         self.ws.on_data_update(self.check_favourite)
         self.input_handler = InputHandler(self)
         self.running_modules.append(self.input_handler)
@@ -176,7 +198,7 @@ class Main(Thread):
     def run(self):
         self.setup()
         refresh_per_second = 8
-        with Live(self.render(), refresh_per_second=refresh_per_second) as self.live:
+        with Live(self.render(), refresh_per_second=refresh_per_second, screen=True) as self.live:
             while self.running:
                 self.live.update(self.render())
                 time.sleep(1 / refresh_per_second)
@@ -190,8 +212,11 @@ class Main(Thread):
         if self.player.data:
             audio_start = self.player.data.start
             audio_song = self.player.data.title
-            if ws_song != audio_song:
-                return -14
+            # if ws_song != audio_song:
+            #     return -14
+            if ws_song and audio_song:
+                if ws_song not in audio_song:
+                    return -14
         else:
             return 0
         
@@ -207,13 +232,14 @@ class Main(Thread):
             for i in self.running_modules:
                 table.add_row(i.name, f'{i.status.running}', i.status.reason)
             return table
-        
+        self._start = time.time()
         self.layout = Layout(name='main')
         self.layout.split_column(
             Layout(Panel(self.header()), name='header', size=3),
             Layout(Panel(self.info()), name='info', minimum_size=14),
-            Layout(Panel(self.other_info(), title='Controls'), name='info', minimum_size=10)
+            Layout(Panel(self._debug()), minimum_size=2),
         )
+        self.last_render_time = time.time() - self._start
         return self.layout
 
     def header(self) -> Text:
@@ -221,9 +247,13 @@ class Main(Thread):
 
     def info(self) -> Layout:
         info = Layout()
-        info.split_row(
-            Layout(self.main_info(), ratio=8),
-            Layout(self.general_info(), ratio=2)
+        info.split_column(
+            Layout(name='main', ratio=10),
+            Layout(Text(f"logged in as: {self.listen.current_user.username if self.listen.current_user else ''}"), name='other', ratio=1, minimum_size=1),
+        )
+        info['main'].split_row(
+            Layout(self.main_info(), minimum_size=14, ratio=8),
+            Layout(self.general_info(), minimum_size=4, ratio=2),
         )
         return info
 
@@ -258,13 +288,23 @@ class Main(Thread):
         else:
             duration = None
             completed = round(time.time() - self.ws.data.song.time_end)
+        total = self.ws.data.song.duration if self.ws.data.song.duration != 0 else None
         table.add_row("Duration", f"{duration}")
         
         self.duration_progress.update(self.duration,
                                       completed=completed,
-                                      total=self.ws.data.song.duration if self.ws.data.song.duration != 0 else None)
+                                      total=total)
+
+        return Group(table, self.duration_progress)
+
+    def general_info(self) -> Table:
+        table = Table(expand=True, show_header=False)
+        # time_since = round(time.time() - self.ws.data.last_heartbeat)
         
-        stream = Table(expand=False, show_header=False, box=None)
+        if not all([i.status.running for i in self.running_modules]):
+            return table
+
+        table.add_column()
         if self.player.volume > 80:
             vol_icon = '󰕾 '
         elif self.player.volume > 30:
@@ -282,42 +322,24 @@ class Main(Thread):
         else:
             cache_duration = -1
             cache_size = 0
-        # stream.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
-        # stream.add_row(f"{vol_icon} {self.player.volume}")
-        # stream.add_row(f"  {cache_duration:.2f}s/{cache_size}")
-        # stream.add_row(Spinner(name='arc', text=Text(f" {self.player.time_remaining:.2f}")))
-
         offset = self.calc_delay()
         if offset == -14:
             offset = "???"
         else:
             offset = f'{offset:.2f}'
-        stream.add_row(
-            f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}",
-            f"{vol_icon} {self.player.volume}",
-            f"  {cache_duration:.2f}s/{cache_size}",
-            f"Offset: {offset}s",
-        )
+        table.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
+        table.add_row(f"{vol_icon} {self.player.volume}")
+        table.add_row(f"  {cache_duration:.2f}s/{cache_size/1000:.0f}MB")
+        table.add_row(f"󰦒  {offset}s",)
 
-        e = Table(expand=True, show_header=False, box=None)
-        if self.player.data:
-            e.add_row('Websocket', 'Player')
-            e.add_row(f'{self.ws.data.start_time}', f'{self.player.data.start}')
-        return Group(table, self.duration_progress, Padding(stream, (1, 0, 0, 0)), e)
-
-    def general_info(self) -> Table:
-        table = Table(expand=True, show_header=False)
-        time_since = round(time.time() - self.ws.data.last_heartbeat)
+        table.add_section()
+        heartbeat_status = "Alive" if round(time.time() - self.ws.data.last_heartbeat) < 40 else "Dead"
+        table.add_row(f"  {heartbeat_status}")
+        # table.add_row(f"Last heartbeat: {datetime.fromtimestamp(self.ws.data.last_heartbeat).strftime('%H:%M:%S')}")
+        # table.add_row(f"Time since: {timedelta(seconds=time_since)}")
+        table.add_row(f"󰥔  {timedelta(seconds=round(time.time() - self.start_time))}")
         
-        if not all([i.status.running for i in self.running_modules]):
-            return table
-
-        table.add_column()
-        table.add_row(f"Last heartbeat: {datetime.fromtimestamp(self.ws.data.last_heartbeat).strftime('%H:%M:%S')}")
-        table.add_row(f"Time since: {timedelta(seconds=time_since)}")
-        table.add_row(f"Uptime: {timedelta(seconds=round(time.time() - self.start_time))}")
-        
-        if self.rpc:
+        if self.rpc and self.config.display.display_rpc_status:
             table.add_section()
             table.add_row(f'RPC Status: {self.rpc.status.running}')
             if not self.rpc.data:
@@ -326,11 +348,20 @@ class Main(Thread):
                 table.add_row("Using: ARRPC")
         return table
 
-    def other_info(self) -> Layout:
-        # accounts
-        # previos songs
-        # stream options such as compresssion
-        return Layout(name='other info')
+    def indicator(self) -> Text:
+        if self.listen.current_user:
+            return Text(f'logged in as: {self.listen.current_user.display_name}')
+        else:
+            return Text("")
+
+    def _debug(self) -> Table:
+        table = Table(expand=False, box=None)
+        table.add_row("Ofd", f'{self.ws.data.song.title}', f'{self.player.data.title}')
+        table.add_row('oft', f'{self.ws.data.start_time}', f'{self.player.data.start}')
+        table.add_row('render time', f'{self.last_render_time*1000:.4f}ms')
+        table.add_row('heat', f'{round(time.time() - self.ws.data.last_heartbeat)}')
+        table.add_row('cmd', f'{self.cmd_input}')
+        return table
 
 
 if __name__ == "__main__":

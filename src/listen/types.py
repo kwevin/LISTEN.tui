@@ -146,29 +146,29 @@ class Song:
         return cls(**kwargs)  # pyright: ignore
     
     @staticmethod
-    def _split_dakuten(word: str | None) -> str | None:
+    def _sanitise(word: str | None) -> str | None:
         if not word:
             return None
-        return word.replace('\u3099', '\u309B').replace('\u309A', '\u309C')
+        return word.replace('\u3099', '\u309B').replace('\u309A', '\u309C').replace('\u200b', '')
 
     @staticmethod
     def _get_title(song: dict[str, Any]) -> str:
         title: str = song.get('title', None)
         if title:
-            title = Song._split_dakuten(title)  # pyright: ignore[reportGeneralTypeIssues]
+            title = Song._sanitise(title)  # pyright: ignore[reportGeneralTypeIssues]
         return title
     
     @staticmethod
     def _get_sources(song: dict[str, Any]) -> list[Source] | None:
-        sources = song.get('sources', None)
+        sources = song.get('sources')
         if not sources:
             return None
 
         return [Source(
             id=source['id'],
-            name=Song._split_dakuten(source.get('name', None)),
-            name_romaji=source.get('nameRomaji', None),
-            image=Link.from_name('sources', source.get('image', None))
+            name=Song._sanitise(source.get('name')),
+            name_romaji=source.get('nameRomaji'),
+            image=Link.from_name('sources', source.get('image'))
         ) for source in sources]
 
     @staticmethod
@@ -178,33 +178,33 @@ class Song:
             return None
         return [Artist(
             id=artist['id'],
-            name=Song._split_dakuten(artist.get('name', None)),
-            name_romaji=artist.get('nameRomaji', None),
-            image=Link.from_name('artists', artist.get('image', None)),
+            name=Song._sanitise(artist.get('name')),
+            name_romaji=Song._sanitise(artist.get('nameRomaji')),
+            image=Link.from_name('artists', artist.get('image')),
             character=[Character(character['id']) for character in artist.get('characters')] if len(artist.get('characters')) != 0 else None
         ) for artist in artists]
     
     @staticmethod
     def _get_albums(song: dict[str, Any]) -> list[Album] | None:
-        albums = song.get('albums', None)
+        albums = song.get('albums')
         if not albums:
             return None
         return [Album(
             id=album['id'],
-            name=Song._split_dakuten(album.get('name', None)),
-            name_romaji=album.get('nameRomaji', None),
-            image=Link.from_name('albums', album.get('image', None))
+            name=Song._sanitise(album.get('name')),
+            name_romaji=Song._sanitise(album.get('nameRomaji')),
+            image=Link.from_name('albums', album.get('image'))
         ) for album in albums]
     
     @staticmethod
     def _get_characters(song: dict[str, Any]) -> list[Character] | None:
-        characters = song.get('characters', None)
+        characters = song.get('characters')
         if not characters:
             return None
         return [Character(
             id=character['id'],
-            name=Song._split_dakuten(character.get('name', None)),
-            name_romaji=character.get('nameRomaji', None)
+            name=Song._sanitise(character.get('name')),
+            name_romaji=Song._sanitise(character.get('nameRomaji'))
         ) for character in characters]
     
     @staticmethod
@@ -227,22 +227,31 @@ class Song:
         name = None
         char_name = None
         lst_string: list[str] = []
+        character_map: dict[int, Character] = {}
+
+        if self.characters:
+            for character in self.characters:
+                character_map[character.id] = character
+
         for artist in self.artists:
             if romaji_first:
                 name = artist.name_romaji if artist.name_romaji else artist.name
             else:
                 name = artist.name
-            if artist.character and self.characters:
-                for character in self.characters:
-                    if artist.character[0].id == character.id:
+            
+            if self.characters and artist.character:
+                for character in artist.character:
+                    if (char := character_map.get(character.id)):
                         if romaji_first:
-                            char_name = character.name_romaji if character.name_romaji else character.name
+                            char_name = char.name_romaji if char.name_romaji else char.name
                         else:
-                            char_name = character.name
-            if name and char_name:
-                lst_string.append(f'{char_name} (CV: {name})')
+                            char_name = char.name
+                
+                if name and char_name:
+                    lst_string.append(f'{char_name} (CV: {name})')
             elif name:
                 lst_string.append(name)
+
         return f"{sep}".join(lst_string)
     
     def sources_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
@@ -302,8 +311,8 @@ class ListenWsData:
             _t=data['t'],
             start_time=datetime.fromisoformat(data['d']['startTime']),
             listener=data['d']['listeners'],
-            requester=Requester.from_data(data['d'].get('requester', None)),
-            event=data['d'].get('event', None),
+            requester=Requester.from_data(data['d'].get('requester')),
+            event=data['d'].get('event'),
             song=Song.from_data(data['d']['song']),
             last_played=[Song.from_data(song) for song in data['d']['lastPlayed']]
         )
@@ -376,14 +385,14 @@ class MPVData:
     def from_metadata(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
             start=datetime.now(timezone.utc),
-            track=data.get('track', None),
-            genre=data.get('genre', None),
-            title=data.get('title', None),
-            artist=data.get('artist', None),
-            year=data.get('year', None),
-            date=data.get('date', None),
-            album=data.get('album', None),
-            comment=data.get('comment', None),
+            track=data.get('track'),
+            genre=data.get('genre'),
+            title=data.get('title'),
+            artist=data.get('artist'),
+            year=data.get('year'),
+            date=data.get('date'),
+            album=data.get('album'),
+            comment=data.get('comment'),
             _ENCODER=data['ENCODER'],
             _icy_br=data['icy-br'],
             _icy_genre=data['icy-genre'],

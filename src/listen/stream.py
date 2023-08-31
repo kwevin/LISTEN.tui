@@ -59,7 +59,7 @@ class StreamPlayerMPV(Module):
         self.idle_count: int = 0
 
     @property
-    def data(self) -> MPVData | None:
+    def data(self) -> MPVData:
         return self._data
     
     @property
@@ -151,6 +151,7 @@ class StreamPlayerMPV(Module):
                 self._log.debug(f'New Metadata: {pretty_repr(self._data)}')
         
         self.player.wait_for_property('metadata', cond=lambda val: True if val else False)  # pyright: ignore[reportUnknownLambdaType]
+        self.player.wait_until_playing()
         self.update_status(True)
         self.player.wait_for_playback()
 
@@ -168,6 +169,7 @@ class StreamPlayerMPV(Module):
     def play_pause(self):
         if self.paused:
             self.play()
+            self.seek_to_end()
         else:
             self.pause()
 
@@ -176,6 +178,17 @@ class StreamPlayerMPV(Module):
 
     def lower_volume(self, vol: int = 10):
         self.volume -= vol
+    
+    def seek_to_end(self):
+        if self.cache:
+            pause_wait = self.config.player.mpv_options.get('cache_pause_wait', None)
+            if pause_wait:
+                seek = self.cache.cache_duration - pause_wait
+            else:
+                seek = self.cache.cache_duration
+        else:
+            return
+        self.player.seek(seek)
 
     def set_volume(self, volume: int):
         self.volume = volume

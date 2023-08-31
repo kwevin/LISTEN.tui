@@ -6,6 +6,7 @@ lower_volume_fine = "${LEFT}"
 raise_volume_fine = "${RIGHT}"
 favourite_song = "f"
 restart_player = "r"
+seek_to_end = "s"
 
 [system]
 username = ""
@@ -24,6 +25,7 @@ use_artist = true
 [display]
 romaji_first = true
 separator = ", "
+display_rpc_status = true
 
 [player]
 volume_step = 10

@@ -28,6 +28,7 @@ class Keybind:
     raise_volume_fine: str = '${RIGHT}'
     favourite_song: str = 'f'
     restart_player: str = 'r'
+    seek_to_end: str = 's'
 
     def sub_key_to_str(self) -> Self:
         s = {k: v for k, v in key.__dict__.items() if "__" not in k}
@@ -69,6 +70,7 @@ class RPC:
 class Display:
     romaji_first: bool = True
     separator: str = ', '
+    display_rpc_status: bool = False
 
 
 @dataclass
@@ -170,8 +172,8 @@ class Config:
             rpc = RPC()
         else:
             rpc = RPC(**rpc)
-        # websocket
-        ws = self._conf.get('websocket', None)
+        # display
+        ws = self._conf.get('display', None)
         if not ws:
             ws = Display()
         else:
