@@ -29,15 +29,14 @@ class BaseModule(Thread):
     @abstractmethod
     def data(self) -> Any:
         return self._data
-    
+
     @property
     def status(self) -> Status:
         return self._status
-    
+
     @abstractmethod
     def run(self) -> None:
         raise NotImplementedError
-    
+
     def terminate(self):
         self._running = False
-    

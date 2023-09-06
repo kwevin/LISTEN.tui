@@ -12,8 +12,8 @@ from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.requests import RequestsHTTPTransport
 from graphql import DocumentNode
 
-from src.listen.types import (Album, Artist, Character, CurrentUser, Link,
-                              Song, Source, SystemFeed, User)
+from .types import (Album, Artist, Character, CurrentUser, Link, Song, Source,
+                    SystemFeed, User)
 
 
 class NotAuthenticatedException(Exception):
@@ -426,11 +426,11 @@ class AIOListen(BaseClient):
 
     # mutations
     @requires_auth
-    async def favorite_song(self, song: int):
+    async def favorite_song(self, song: int) -> None:
         query = self.queries.favorite_song
         params = {"id": song}
         await self._session.execute(document=query, variable_values=params)  # pyright: ignore
-        return await self.check_favorite(song)
+        return
 
 
 class Listen(BaseClient):
@@ -633,12 +633,12 @@ class Listen(BaseClient):
 
     # mutation
     @requires_auth_sync
-    def favorite_song(self, song: int):
+    def favorite_song(self, song: int) -> None:
         with self._lock:
             query = self.queries.favorite_song
             params = {"id": song}
             self._client.execute(document=query, variable_values=params)  # pyright: ignore
-            return self.check_favorite(song)
+            return
 
 
 if __name__ == "__main__":

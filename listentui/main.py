@@ -6,6 +6,8 @@ from pathlib import Path
 from threading import Thread
 from typing import Literal
 
+from modules.baseModule import BaseModule
+from modules.presence import DiscordRichPresence
 from psutil import pid_exists
 from readchar import key, readkey
 from rich.console import (Console, ConsoleOptions, ConsoleRenderable,
@@ -19,27 +21,26 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, Task
 from rich.table import Table
 from rich.text import Text
 
-from log import Logger
-from modules.baseModule import BaseModule
-from src.config import Config
-from src.listen.client import Listen
-from src.listen.stream import StreamPlayerMPV
-from src.listen.types import CurrentUser, ListenWsData
-from src.listen.websocket import ListenWebsocket
-from src.modules.presence import DiscordRichPresence
+from .config import Config
+from .listen.client import Listen
+from .listen.stream import StreamPlayerMPV
+from .listen.types import CurrentUser, ListenWsData
+from .listen.websocket import ListenWebsocket
+from .log import Logger
 
 
 class UserPanel(ConsoleRenderable):
     def __init__(self, user: CurrentUser) -> None:
         self.user = user
 
-    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+    def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
         def feed(count: int) -> Table:
             table = Table(expand=True, box=None, padding=(0, 0, 1, 0))
             for idx, feed in enumerate(self.user.feed):
                 if idx + 1 > count:
                     break
-                table.add_row(Text(f'Favorited {feed.song.title} by {feed.song.artists_to_string()}', justify='left', overflow='ellipsis'))
+                table.add_row(Text(f'Favorited {feed.song.title} by {feed.song.artists_to_string()}',
+                                   justify='left', overflow='ellipsis'))
 
             return table
         width = options.max_width

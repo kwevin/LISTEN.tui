@@ -8,8 +8,8 @@ import websockets.client as websockets
 from rich.pretty import pretty_repr
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
-from modules.baseModule import BaseModule
-from src.listen.types import ListenWsData
+from ..modules.baseModule import BaseModule
+from .types import ListenWsData
 
 
 class ListenWebsocket(BaseModule):

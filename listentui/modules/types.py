@@ -16,7 +16,7 @@ class Activity:
     _CUSTOM: int = 4
     COMPETING: int = 5
 
-    
+
 @dataclass
 class Rpc:
     is_arrpc: bool

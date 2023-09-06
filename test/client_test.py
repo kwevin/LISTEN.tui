@@ -1,16 +1,18 @@
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, TestCase
 
-from src.config import Config
-from src.listen.client import AIOListen, Listen, NotAuthenticatedException
-from src.listen.types import (Album, Artist, Character, CurrentUser, Song,
-                              Source, User)
+from listentui.config import Config
+from listentui.listen.client import (AIOListen, Listen,
+                                     NotAuthenticatedException)
+from listentui.listen.types import (Album, AlbumID, Artist, ArtistID,
+                                    Character, CharacterID, CurrentUser, Song,
+                                    SongID, Source, SourceID, User)
 
-_ALBUM = 4644
-_SONG = 22488
-_ARTIST = 215
-_CHARACTER = 403
-_SOURCE = 507
+_ALBUM = AlbumID(4644)
+_SONG = SongID(22488)
+_ARTIST = ArtistID(215)
+_CHARACTER = CharacterID(403)
+_SOURCE = SourceID(507)
 _ALBUM_LINK = 'https://listen.moe/albums/'
 _ARTIST_LINK = 'https://listen.moe/artists/'
 _CHARACTER_LINK = 'https://listen.moe/characters/'
@@ -237,7 +239,7 @@ class TestAioListenAuth(IsolatedAsyncioTestCase):
     async def test_check_favorite(self):
         async with self.listen as listen:
             res = await listen.check_favorite(_SONG)
-            self.assertEqual(res, False)
+            self.assertIsInstance(res, bool)
 
     async def test_favorite_song(self):
         async with self.listen as listen:

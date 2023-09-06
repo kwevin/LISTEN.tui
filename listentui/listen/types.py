@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import time
-from typing import Any, Literal, NewType, Optional, Self, Type, Union
+from typing import Any, Literal, NewType, Optional, Self, Type
 
 AlbumID = NewType('AlbumID', int)
 ArtistID = NewType('ArtistID', int)

@@ -7,9 +7,9 @@ from typing import Any, Callable
 import mpv
 from rich.pretty import pretty_repr
 
-from modules.baseModule import BaseModule
-from src.config import Config
-from src.listen.types import DemuxerCacheState, MPVData
+from ..config import Config
+from ..modules.baseModule import BaseModule
+from .types import DemuxerCacheState, MPVData
 
 # class StreamPlayerVLC:
 #     def __init__(self) -> None:

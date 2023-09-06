@@ -3,15 +3,15 @@ import asyncio
 import os
 import time
 
+from modules.baseModule import BaseModule
 from pypresence import AioPresence, DiscordNotFound
 from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
 from rich.pretty import pretty_repr
 
-from modules.baseModule import BaseModule
-from src.config import Config
-from src.listen.types import ListenWsData, Song
-from src.modules.types import Activity, Rpc
+from ..config import Config
+from ..listen.types import ListenWsData, Song
+from .types import Activity, Rpc
 
 
 class AioPresence(AioPresence):
@@ -111,7 +111,7 @@ class DiscordRichPresence(BaseModule):
         if not hasattr(self, '_data'):
             return None
         return self._data
-        
+
     @staticmethod
     async def _get_epoch_end_time(duration: int | float | None) -> int | None:
         if not duration:
@@ -127,12 +127,12 @@ class DiscordRichPresence(BaseModule):
         if len(string) >= 128:
             return f'{string[0:125]}...'.strip()
         return string.strip()
-    
+
     async def _get_large_image(self, song: Song) -> str | None:
         use_fallback: bool = self.config.rpc.use_fallback
         fallback: str = self.config.rpc.fallback
         use_artist: bool = self.config.rpc.use_artist
-        
+
         image = song.album_image(url=True)
         if not image and use_artist:
             image = song.artist_image(url=True)
@@ -142,7 +142,7 @@ class DiscordRichPresence(BaseModule):
         if not image and not use_fallback:
             return image
         return image
-    
+
     async def _get_large_text(self, song: Song) -> str | None:
         large_text = ''
         source = song.sources_to_string()
@@ -175,16 +175,16 @@ class DiscordRichPresence(BaseModule):
                 # self.update_status(False, "Discord Not Found")
                 self._log.info("Discord Not Found")
                 await asyncio.sleep(120)
-            
+
             while self.status.running:
                 await asyncio.sleep(1)
-            
+
     def run(self):
         self.loop.run_until_complete(self.connect())
-    
+
     def update(self, data: ListenWsData):
         self.loop.create_task(self.aio_update(data))
-    
+
     async def aio_update(self, data: ListenWsData | Rpc) -> None:
         if isinstance(data, ListenWsData):
             song: Song = data.song
