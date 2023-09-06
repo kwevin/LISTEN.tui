@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from functools import wraps
 from string import Template
+from threading import Lock
 from types import TracebackType
 from typing import Any, Callable, Coroutine, Optional, Self, Type
 
@@ -113,13 +114,19 @@ class BaseClient:
                         name
                         nameRomaji
                     """,
-            "next": """""",
         }
         login = Template("""
             mutation login($$username: String!, $$password: String!, $$systemOffset: Int!, $$systemCount: Int!) {
                 login(username: $$username, password: $$password) {
                     user {
                         ${user}
+                        systemFeed(offset: $$systemOffset, count: $$systemCount) {
+                            type
+                            createdAt
+                            song {
+                                ${song}
+                            }
+                        }
                     }
                     token
                 }
@@ -216,13 +223,7 @@ class BaseClient:
     @property
     def headers(self):
         return self._headers
-    
-    @property
-    def current_user(self):
-        if not self._user:
-            return None
-        return self._user
-    
+
 
 class AIOListen(BaseClient):
     def __init__(self, user: CurrentUser | None = None) -> None:
@@ -234,6 +235,13 @@ class AIOListen(BaseClient):
             self._token = user.token
             self._user = user
 
+    @property
+    def current_user(self):
+        if not self._user:
+            return None
+        self._loop.create_task(self._update_current_user())
+        return self._user
+
     @classmethod
     def login(cls: Type[Self], username: str, password: str) -> Self:
         headers = {
@@ -243,7 +251,10 @@ class AIOListen(BaseClient):
         transport = RequestsHTTPTransport(url=AIOListen._ENDPOINT, headers=headers, retries=3)
         client = Client(transport=transport)
         query = cls._QUERIES.login
-        params = {'username': username, 'password': password, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
+        params = {'username': username,
+                  'password': password,
+                  "systemOffset": cls._SYSTEM_OFFSET,
+                  "systemCount": cls._SYSTEM_COUNT}
         res = client.execute(document=query, variable_values=params)  # pyright: ignore
         login = res['login']
         user = res['login']['user']
@@ -301,6 +312,22 @@ class AIOListen(BaseClient):
                         ) -> None:
         await self._client.close_async()
 
+    async def _update_current_user(self) -> None:
+        if not self._user:
+            return
+        current_user = self._user
+        user = await self.user(current_user.username)
+        if not user:
+            return
+        self._user = CurrentUser(user.uuid,
+                                 user.username,
+                                 user.display_name,
+                                 user.bio,
+                                 user.favorites,
+                                 user.uploads,
+                                 user.requests,
+                                 user.feed, current_user.token)
+
     # queries
     async def album(self, id: int) -> Album | None:
         query = self.queries.album
@@ -328,7 +355,9 @@ class AIOListen(BaseClient):
             name=artist['name'],
             name_romaji=artist['nameRomaji'],
             image=Link.from_name('artists', artist['image']),
-            character=[Character(character['id']) for character in artist['character']] if len(artist['characters']) != 0 else None
+            character=[
+                Character(character['id']) for character in artist['characters']
+            ] if len(artist['characters']) != 0 else None
         )
 
     async def character(self, id: int) -> Character | None:
@@ -343,7 +372,7 @@ class AIOListen(BaseClient):
             name=character['name'],
             name_romaji=character['nameRomaji']
         )
-    
+
     async def song(self, id: int) -> Song | None:
         query = self.queries.song
         params = {'id': id}
@@ -366,7 +395,7 @@ class AIOListen(BaseClient):
             name_romaji=source['nameRomaji'],
             image=Link.from_name('sources', source['image'])
         )
-    
+
     async def user(self, username: str, system_offset: int = 0, system_count: int = 5) -> User | None:
         query = self.queries.user
         params = {'username': username, "systemOffset": system_offset, "systemCount": system_count}
@@ -394,7 +423,7 @@ class AIOListen(BaseClient):
         if song in favorite:
             return True
         return False
-    
+
     # mutations
     @requires_auth
     async def favorite_song(self, song: int):
@@ -413,6 +442,13 @@ class Listen(BaseClient):
             self._user = user
         self._transport = RequestsHTTPTransport(url=self._ENDPOINT, headers=self._headers, retries=3)
         self._client = Client(transport=self._transport)
+        self._lock = Lock()
+
+    @property
+    def current_user(self):
+        if not self._user:
+            return None
+        return self._user
 
     @classmethod
     def login(cls: Type[Self], username: str, password: str) -> Self:
@@ -423,7 +459,10 @@ class Listen(BaseClient):
         transport = RequestsHTTPTransport(url=Listen._ENDPOINT, headers=headers, retries=3)
         client = Client(transport=transport)
         query = cls._QUERIES.login
-        params = {'username': username, 'password': password, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
+        params = {'username': username,
+                  'password': password,
+                  "systemOffset": cls._SYSTEM_OFFSET,
+                  "systemCount": cls._SYSTEM_COUNT}
         res = client.execute(document=query, variable_values=params)  # pyright: ignore
         login = res['login']
         user = res['login']['user']
@@ -438,7 +477,7 @@ class Listen(BaseClient):
             feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
             token=login['token']
         ))
-    
+
     @classmethod
     def from_username_token(cls: Type[Self], username: str, token: str) -> Self:
         headers = {
@@ -470,110 +509,136 @@ class Listen(BaseClient):
         self._headers.update(header)
         self._transport = RequestsHTTPTransport(url=self._ENDPOINT, headers=self._headers, retries=3)
         self._client = Client(transport=self._transport)
-    
+
+    def _update_current_user(self) -> None:
+        if not self._user:
+            return
+        current_user = self._user
+        user = self.user(current_user.username)
+        if not user:
+            return
+        self._user = CurrentUser(user.uuid,
+                                 user.username,
+                                 user.display_name,
+                                 user.bio,
+                                 user.favorites,
+                                 user.uploads,
+                                 user.requests,
+                                 user.feed, current_user.token)
+
     # queries
     def album(self, id: int) -> Album | None:
-        query = self.queries.album
-        params = {'id': id}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        album = res.get('album', None)
-        if not album:
-            return None
-        return Album(
-            id=album['id'],
-            name=album['name'],
-            name_romaji=album['nameRomaji'],
-            image=Link.from_name('albums', album['image'])
-        )
+        with self._lock:
+            query = self.queries.album
+            params = {'id': id}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            album = res.get('album', None)
+            if not album:
+                return None
+            return Album(
+                id=album['id'],
+                name=album['name'],
+                name_romaji=album['nameRomaji'],
+                image=Link.from_name('albums', album['image'])
+            )
 
     def artist(self, id: int) -> Artist | None:
-        query = self.queries.artist
-        params = {'id': id}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        artist = res.get('artist', None)
-        if not artist:
-            return None
-        return Artist(
-            id=artist['id'],
-            name=artist['name'],
-            name_romaji=artist['nameRomaji'],
-            image=Link.from_name('artists', artist['image']),
-            character=[Character(character['id'],
-                                 character['name'],
-                                 character['nameRomaji']) for character in artist['characters']] if len(artist['characters']) != 0 else None
-        )
+        with self._lock:
+            query = self.queries.artist
+            params = {'id': id}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            artist = res.get('artist', None)
+            if not artist:
+                return None
+            return Artist(
+                id=artist['id'],
+                name=artist['name'],
+                name_romaji=artist['nameRomaji'],
+                image=Link.from_name('artists', artist['image']),
+                character=[
+                    Character(character['id'],
+                              character['name'],
+                              character['nameRomaji']) for character in artist['characters']
+                ] if len(artist['characters']) != 0 else None
+            )
 
     def character(self, id: int) -> Character | None:
-        query = self.queries.character
-        params = {'id': id}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        character = res.get('character', None)
-        if not character:
-            return None
-        return Character(
-            id=character['id'],
-            name=character['name'],
-            name_romaji=character['nameRomaji']
-        )
-    
+        with self._lock:
+            query = self.queries.character
+            params = {'id': id}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            character = res.get('character', None)
+            if not character:
+                return None
+            return Character(
+                id=character['id'],
+                name=character['name'],
+                name_romaji=character['nameRomaji']
+            )
+
     def song(self, id: int) -> Song | None:
-        query = self.queries.song
-        params = {'id': id}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        song = res.get('song', None)
-        if not song:
-            return None
-        return Song.from_data(song)
+        with self._lock:
+            query = self.queries.song
+            params = {'id': id}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            song = res.get('song', None)
+            if not song:
+                return None
+            return Song.from_data(song)
 
     def source(self, id: int) -> Source | None:
-        query = self.queries.source
-        params = {'id': id}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        source = res.get('source', None)
-        if not source:
-            return None
-        return Source(
-            id=source['id'],
-            name=source['name'],
-            name_romaji=source['nameRomaji'],
-            image=Link.from_name('sources', source['image'])
-        )
-    
+        with self._lock:
+            query = self.queries.source
+            params = {'id': id}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            source = res.get('source', None)
+            if not source:
+                return None
+            return Source(
+                id=source['id'],
+                name=source['name'],
+                name_romaji=source['nameRomaji'],
+                image=Link.from_name('sources', source['image'])
+            )
+
     def user(self, username: str, system_offset: int = 0, system_count: int = 5) -> User | None:
-        query = self.queries.user
-        params = {'username': username, "systemOffset": system_offset, "systemCount": system_count}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        user = res.get('user', None)
-        if not user:
-            return None
-        return User(
-            uuid=user['uuid'],
-            username=user['username'],
-            display_name=user['displayName'],
-            bio=user['bio'],
-            favorites=user['favorites']['count'],
-            uploads=user['uploads']['count'],
-            requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
-        )
+        with self._lock:
+            query = self.queries.user
+            params = {'username': username, "systemOffset": system_offset, "systemCount": system_count}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            user = res.get('user', None)
+            if not user:
+                return None
+            return User(
+                uuid=user['uuid'],
+                username=user['username'],
+                display_name=user['displayName'],
+                bio=user['bio'],
+                favorites=user['favorites']['count'],
+                uploads=user['uploads']['count'],
+                requests=user['requests']['count'],
+                feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
+            )
 
     @requires_auth_sync
     def check_favorite(self, song: int) -> bool:
-        query = self.queries.check_favorite
-        params = {"songs": song}
-        res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        favorite = res['checkFavorite']
-        if song in favorite:
-            return True
-        return False
-    
+        with self._lock:
+            query = self.queries.check_favorite
+            params = {"songs": song}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            favorite = res['checkFavorite']
+            if song in favorite:
+                return True
+            return False
+
     # mutation
     @requires_auth_sync
     def favorite_song(self, song: int):
-        query = self.queries.favorite_song
-        params = {"id": song}
-        self._client.execute(document=query, variable_values=params)  # pyright: ignore
-        return self.check_favorite(song)
+        with self._lock:
+            query = self.queries.favorite_song
+            params = {"id": song}
+            self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            return self.check_favorite(song)
 
 
 if __name__ == "__main__":
@@ -582,13 +647,3 @@ if __name__ == "__main__":
             print(await listen.album(1))
     loop = asyncio.new_event_loop()
     loop.run_until_complete(main())
-
-    # async def main():
-    #     async with AIOListen.login('username', 'password') as listen:
-    #         print(await listen.favorite_song(14))
-
-    # e = Listen()
-    # print(e.user('kwin4279'))
-
-    # e = Listen.login('username', 'password')
-    # print(e.favorite_song(14))

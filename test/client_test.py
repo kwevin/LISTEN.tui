@@ -13,18 +13,16 @@ _CHARACTER = 403
 _SOURCE = 507
 _ALBUM_LINK = 'https://listen.moe/albums/'
 _ARTIST_LINK = 'https://listen.moe/artists/'
-_SOURCE_LINK = 'https://listen.moe/sources/'
 _CHARACTER_LINK = 'https://listen.moe/characters/'
 _ALBUM_CDN_LINK = 'https://cdn.listen.moe/covers/'
 _ARTIST_CDN_LINK = 'https://cdn.listen.moe/artists/'
-_SOURCE_CDN_LINK = 'https://cdn.listen.moe/source/'
 
 
 class TestListenUnauth(TestCase):
 
     def setUp(self) -> None:
         self.listen = Listen()
-    
+
     def test_album(self):
         album = self.listen.album(_ALBUM)
         self.assertIsInstance(album, Album)
@@ -61,11 +59,11 @@ class TestListenUnauth(TestCase):
     def test_check_favorite(self):
         with self.assertRaises(NotAuthenticatedException):
             self.listen.check_favorite()
-    
+
     def test_current_user(self):
         current_user = self.listen.current_user
         self.assertEqual(current_user, None)
-    
+
     def test_favorite_song(self):
         with self.assertRaises(NotAuthenticatedException):
             self.listen.favorite_song(_SONG)
@@ -81,7 +79,7 @@ class TestListenUnauth(TestCase):
             self.assertEqual(song.duration, 288)
             if song.played:
                 self.assertGreaterEqual(song.played, 19)
-    
+
     def test_user(self):
         user = self.listen.user('kwin4279')
         self.assertIsInstance(user, User)
@@ -105,13 +103,12 @@ class TestListenUnauth(TestCase):
             self.assertEqual(source.image, None)
 
 
-
 class TestListenAuth(TestCase):
     def setUp(self) -> None:
         conf = Path().resolve().joinpath('devconf.toml')
         self.conf = Config(conf).config.system
         self.listen = Listen.login(self.conf.username, self.conf.password)
-    
+
     def test_current_user(self):
         user = self.listen.current_user
         self.assertIsInstance(user, CurrentUser)
@@ -129,7 +126,7 @@ class TestListenAuth(TestCase):
 class TestAioListenUnath(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.listen = AIOListen()
-    
+
     async def asyncTearDown(self) -> None:
         pass
 
@@ -173,12 +170,12 @@ class TestAioListenUnath(IsolatedAsyncioTestCase):
         with self.assertRaises(NotAuthenticatedException):
             async with self.listen as listen:
                 await listen.check_favorite()
-    
+
     async def test_current_user(self):
         async with self.listen as listen:
             current_user = listen.current_user
             self.assertEqual(current_user, None)
-    
+
     async def test_favorite_song(self):
         with self.assertRaises(NotAuthenticatedException):
             async with self.listen as listen:
@@ -196,7 +193,7 @@ class TestAioListenUnath(IsolatedAsyncioTestCase):
                 self.assertEqual(song.duration, 288)
                 if song.played:
                     self.assertGreaterEqual(song.played, 19)
-    
+
     async def test_user(self):
         async with self.listen as listen:
             user = await listen.user('kwin4279')
@@ -227,10 +224,10 @@ class TestAioListenAuth(IsolatedAsyncioTestCase):
         conf = Path().resolve().joinpath('devconf.toml')
         self.conf = Config(conf).config.system
         self.listen = AIOListen.login(self.conf.username, self.conf.password)
-    
+
     async def asyncTearDown(self) -> None:
         pass
-    
+
     async def test_current_user(self):
         async with self.listen as listen:
             user = listen.current_user
