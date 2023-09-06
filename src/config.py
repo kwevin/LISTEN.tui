@@ -112,27 +112,27 @@ class Config:
     @property
     def keybind(self):
         return self._keybind
-    
+
     @property
     def system(self):
         return self._system
-    
+
     @property
     def rpc(self):
         return self._rpc
-    
+
     @property
     def display(self):
         return self._display
-    
+
     @property
     def player(self):
         return self._player
-    
+
     @property
     def config(self):
         return self._config
-    
+
     @classmethod
     def get_config(cls: Type[Self]) -> Self:
         if not Config._CONFIG:
@@ -196,12 +196,12 @@ class Config:
     def _write(path: Path, config: dict[str, Any]) -> None:
         with open(path, 'wb') as f:
             tomli_w.dump(config, f)
-    
+
     @staticmethod
     def _default() -> dict[str, Any]:
         e = Configuration()
         return asdict(e)
-    
+
     def update(self, component: str, key: str, value: Any):
         self._conf[component][key] = value
         self._write(self.config_path, self._conf)

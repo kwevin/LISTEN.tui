@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import time
-from typing import Any, Literal, Self, Type
+from typing import Any, Literal, NewType, Optional, Self, Type, Union
+
+AlbumID = NewType('AlbumID', int)
+ArtistID = NewType('ArtistID', int)
+CharacterID = NewType('CharacterID', int)
+SongID = NewType('SongID', int)
+SourceID = NewType('SourceID', int)
 
 
 @dataclass
@@ -17,12 +23,12 @@ class Link:
             'artists',
             'sources'
         ],
-        value: str | None
+        value: Optional[str] = None
     ) -> Self | None:
 
         if not value:
             return None
-        
+
         cdn = "https://cdn.listen.moe"
         match type:
             case 'albums':
@@ -58,7 +64,7 @@ class CurrentUser(User):
 
 @dataclass
 class Album:
-    id: int
+    id: AlbumID
     name: str | None
     name_romaji: str | None
     image: Link | None
@@ -70,7 +76,7 @@ class Album:
 
 @dataclass
 class Artist:
-    id: int
+    id: ArtistID
     name: str | None
     name_romaji: str | None
     image: Link | None
@@ -83,9 +89,9 @@ class Artist:
 
 @dataclass
 class Character:
-    id: int
-    name: str | None = None
-    name_romaji: str | None = None
+    id: CharacterID
+    name: Optional[str] = None
+    name_romaji: Optional[str] = None
     link: str = field(init=False)
 
     def __post_init__(self):
@@ -94,7 +100,7 @@ class Character:
 
 @dataclass
 class Source:
-    id: int
+    id: SourceID
     name: str | None
     name_romaji: str | None
     image: Link | None
@@ -144,9 +150,9 @@ class Song:
             kwargs.update({'played': p})
         if (p := data.get('titleRomaji', None)):
             kwargs.update({'title_romaji': p})
-    
+
         return cls(**kwargs)  # pyright: ignore
-    
+
     @staticmethod
     def _sanitise(word: str | None) -> str | None:
         if not word:
@@ -159,7 +165,7 @@ class Song:
         if title:
             title = Song._sanitise(title)  # pyright: ignore[reportGeneralTypeIssues]
         return title
-    
+
     @staticmethod
     def _get_sources(song: dict[str, Any]) -> list[Source] | None:
         sources = song.get('sources')
@@ -183,9 +189,11 @@ class Song:
             name=Song._sanitise(artist.get('name')),
             name_romaji=Song._sanitise(artist.get('nameRomaji')),
             image=Link.from_name('artists', artist.get('image')),
-            character=[Character(character['id']) for character in artist.get('characters')] if len(artist.get('characters')) != 0 else None
+            character=[
+                Character(character['id']) for character in artist.get('characters')
+            ] if len(artist.get('characters')) != 0 else None
         ) for artist in artists]
-    
+
     @staticmethod
     def _get_albums(song: dict[str, Any]) -> list[Album] | None:
         albums = song.get('albums')
@@ -197,7 +205,7 @@ class Song:
             name_romaji=Song._sanitise(album.get('nameRomaji')),
             image=Link.from_name('albums', album.get('image'))
         ) for album in albums]
-    
+
     @staticmethod
     def _get_characters(song: dict[str, Any]) -> list[Character] | None:
         characters = song.get('characters')
@@ -208,9 +216,10 @@ class Song:
             name=Song._sanitise(character.get('name')),
             name_romaji=Song._sanitise(character.get('nameRomaji'))
         ) for character in characters]
-    
+
     @staticmethod
-    def _list_to_string(lst: list[Artist] | list[Source] | list[Album] | None, romaji_first: bool = True, sep: str = ', ') -> str | None:
+    def _list_to_string(lst: list[Artist] | list[Source] | list[Album] | None,
+                        romaji_first: bool = True, sep: str = ', ') -> str | None:
         if not lst:
             return None
         lst_string: list[str] = []
@@ -240,7 +249,7 @@ class Song:
                 name = artist.name_romaji if artist.name_romaji else artist.name
             else:
                 name = artist.name
-            
+
             if self.characters and artist.character:
                 for character in artist.character:
                     if (char := character_map.get(character.id)):
@@ -248,20 +257,20 @@ class Song:
                             char_name = char.name_romaji if char.name_romaji else char.name
                         else:
                             char_name = char.name
-                
+
                 if name and char_name:
                     lst_string.append(f'{char_name} (CV: {name})')
             elif name:
                 lst_string.append(name)
 
         return f"{sep}".join(lst_string)
-    
+
     def sources_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
         return self._list_to_string(self.sources, romaji_first=romaji_first, sep=sep)
-    
+
     def albums_to_string(self, romji_first: bool = True, sep: str = ', ') -> str | None:
         return self._list_to_string(self.albums, romaji_first=romji_first, sep=sep)
-    
+
     @staticmethod
     def _get_image(lst: list[Artist] | list[Source] | list[Album] | None, url: bool) -> str | None:
         if not lst:
@@ -274,7 +283,7 @@ class Song:
             else:
                 return item.image.name
         return None
-    
+
     def artist_image(self, url: bool = False) -> str | None:
         return self._get_image(self.artists, url)
 
@@ -292,8 +301,8 @@ class Song:
     albums: list["Album"] | None
     duration: int | None
     time_end: int
-    played: int | None = None
-    title_romaji: str | None = None
+    played: Optional[int] = None
+    title_romaji: Optional[str] = None
 
 
 @dataclass
@@ -333,7 +342,7 @@ class ListenWsData:
             song=Song.from_data(data['d']['song']),
             last_played=[Song.from_data(song) for song in data['d']['lastPlayed']]
         )
-        
+
     _op: int
     _t: str
     song: Song
@@ -371,7 +380,7 @@ class DemuxerCacheState:
         total_bytes = int(data.get('total-bytes', -1))
         seekable_start = float(data.get('reader-pts', -1))
         seekable_ranges = data.get('seekable-ranges')
-        
+
         if seekable_ranges:
             seekable_end = float(seekable_ranges[0].get('end', -1))
         else:

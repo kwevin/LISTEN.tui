@@ -8,7 +8,8 @@ from typing import Literal
 
 from psutil import pid_exists
 from readchar import key, readkey
-from rich.console import Console, ConsoleOptions, RenderResult
+from rich.console import (Console, ConsoleOptions, ConsoleRenderable,
+                          RenderResult)
 from rich.layout import Layout
 from rich.live import Live
 from rich.padding import Padding
@@ -28,7 +29,7 @@ from src.listen.websocket import ListenWebsocket
 from src.modules.presence import DiscordRichPresence
 
 
-class UserPanel:
+class UserPanel(ConsoleRenderable):
     def __init__(self, user: CurrentUser) -> None:
         self.user = user
 
@@ -44,7 +45,7 @@ class UserPanel:
         width = options.max_width
         height = options.max_height
         layout = Layout()
-        
+
         table = Table(expand=True, box=None)
         if width > 36:
             table.add_column("Requested", justify='center')
@@ -74,10 +75,9 @@ class UserPanel:
             title='User',
             height=height
         )
-        
+
 
 class MofNTimeCompleteColumn(MofNCompleteColumn):
-    
     def render(self, task: "Task") -> Text:
         """Show 00:01/04:28"""
         m, s = divmod(int(task.completed), 60)
@@ -104,7 +104,7 @@ class InputHandler(BaseModule):
         self.config = self.main.config
         self.kb = self.config.keybind
         self.pl = self.main.player
-    
+
     @property
     def data(self):
         return None
@@ -175,7 +175,7 @@ class Main(Thread):
         self.ws = ListenWebsocket()
         self.running_modules.append(self.ws)
         self.ws.on_data_update(self.update)
-        
+
         self.player = StreamPlayerMPV()
         self.running_modules.append(self.player)
 
@@ -215,10 +215,10 @@ class Main(Thread):
                 pid = lock.readline().rstrip()
             if pid_exists(int(pid)):
                 raise Exception("Another instance is already running")
-        
+
         with open(instance_lock, 'w') as lock:
             lock.write(f'{os.getpid()}')
-    
+
     def free_instance_lock(self):
         os.remove(Path().resolve().joinpath('_instance.lock'))
 
@@ -229,7 +229,7 @@ class Main(Thread):
             self.favourite_status = 2
         else:
             self.favourite_status = 0
-    
+
     def update(self, data: ListenWsData):
         self.update_counter += 1
         res = self.listen.check_favorite(data.song.id)
@@ -255,7 +255,7 @@ class Main(Thread):
                 return "???"
         else:
             return "???"
-        
+
         diff = audio_start - ws_start
         return f'{diff.total_seconds():.2f}'
 
@@ -274,7 +274,7 @@ class Main(Thread):
         table = Table(expand=True, show_header=False)
         table.add_column(ratio=2)
         table.add_column(ratio=8)
-        
+
         if self.ws.data.requester:
             table.add_row("Requested By", self.ws.data.requester.display_name)
         match self.favourite_status:
@@ -293,13 +293,13 @@ class Main(Thread):
         if self.ws.data.song.albums:
             table.add_row("Album", self.ws.data.song.albums_to_string(
                 self.config.display.romaji_first, self.config.display.separator))
-            
+
         if self.ws.data.song.duration:
             completed = (datetime.now(timezone.utc) - self.ws.data.start_time).total_seconds()
         else:
             completed = round(time.time() - self.ws.data.song.time_end)
         total = self.ws.data.song.duration if self.ws.data.song.duration != 0 else 0
-        
+
         self.duration_progress.update(self.duration_task,
                                       completed=completed,
                                       total=total)
@@ -309,7 +309,7 @@ class Main(Thread):
 
     def other_info(self) -> Table:
         table = Table(expand=True, show_header=False)
-        
+
         if not all([i.status.running for i in self.running_modules]):
             return table
 
@@ -324,7 +324,7 @@ class Main(Thread):
             vol_icon = '󰝟 '
         else:
             vol_icon = '󰖁 '
-        
+
         if self.player.cache:
             cache_duration = self.player.cache.cache_duration
             cache_size = self.player.cache.fw_byte
@@ -342,14 +342,7 @@ class Main(Thread):
         heartbeat_status = "Alive" if last_time < 40 else f"Dead ({last_time})"
         table.add_row(f"  {heartbeat_status}")
         table.add_row(f"󰥔  {timedelta(seconds=round(time.time() - self.start_time))}")
-        
-        # if self.rpc and self.config.display.display_rpc_status:
-        #     table.add_section()
-        #     table.add_row(f'RPC Status: {self.rpc.status.running}')
-        #     if not self.rpc.data:
-        #         return table
-        #     if self.rpc.data.is_arrpc:
-        #         table.add_row("Using: ARRPC")
+
         return table
 
     def _debug(self) -> Panel:
@@ -359,7 +352,7 @@ class Main(Thread):
         table.add_row('heat', f'{round(time.time() - self.ws.data.last_heartbeat)}')
         table.add_row('cmd', f'{self.cmd_input}')
         return Panel(table)
-    
+
     def run(self):
         with self.console.status("Logging in...", spinner='dots'):
             if not self.config.system.token:

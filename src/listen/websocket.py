@@ -24,7 +24,7 @@ class ListenWebsocket(BaseModule):
     @property
     def data(self) -> ListenWsData:
         return self._data
-    
+
     def on_data_update(self, method: Callable[[ListenWsData], Any]) -> None:
         self.update_able.append(method)
 
@@ -54,7 +54,7 @@ class ListenWebsocket(BaseModule):
                         case 0:
                             heartbeat = self.ws_data['d']['heartbeat'] / 1000
                             self.loop.create_task(self.ws_keepalive(heartbeat))
-                            
+
                         case 1:
                             self._log.info(f"Data Received: {pretty_repr(self.ws_data)}")
                             self._data = ListenWsData.from_data(self.ws_data)
