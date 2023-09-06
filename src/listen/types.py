@@ -3,8 +3,6 @@ from datetime import datetime, timezone
 from time import time
 from typing import Any, Literal, Self, Type
 
-from src.modules.types import Rpc
-
 
 @dataclass
 class Link:
@@ -43,6 +41,10 @@ class User:
     username: str
     display_name: str
     bio: str | None
+    favorites: int
+    uploads: int
+    requests: int
+    feed: list["SystemFeed"]
     link: str = field(init=False)
 
     def __post_init__(self):
@@ -295,6 +297,21 @@ class Song:
 
 
 @dataclass
+class SystemFeed:
+    type: int
+    created_at: str
+    song: Song
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        return cls(
+            type=data['type'],
+            created_at=data['createdAt'],
+            song=Song.from_data(data['song'])
+        )
+
+
+@dataclass
 class ListenWsData:
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
@@ -326,28 +343,28 @@ class ListenWsData:
     last_played: list["Song"]
     listener: int
     last_heartbeat: float = time()
-    rpc: Rpc | None = None
 
 
 @dataclass
 class DemuxerCacheState:
     """
-    `cache_end`: total demuxer cache time (seconds)\n
-    `cache_duration`: amount of cache (seconds)\n
-    `fw_byte`: no. bytes buffered size from current decoding pos\n
-    `total_bytes`: sum of cached seekable range\n
-    `seekable_start`: approx timestamp of start of buffered range
-    `seekable_end`: approx timestamp of end of buffered range\n
+    For more information, see https://mpv.io/manual/master/#command-interface-demuxer-cache-state
     """
     cache_end: float
+    """`cache_end`: total demuxer cache time (seconds)"""
     cache_duration: float
+    """`cache_duration`: amount of cache (seconds)"""
     fw_byte: int
+    """`fw_byte`: no. bytes buffered size from current decoding pos"""
     total_bytes: int
+    """`total_bytes`: sum of cached seekable range"""
     seekable_start: float
+    """`seekable_start`: approx timestamp of start of buffered range"""
     seekable_end: float | None
+    """`seekable_end`: approx timestamp of end of buffered range"""
 
     @classmethod
-    def from_demuxer_cache_state(cls: Type[Self], data: dict[str, Any]) -> Self:
+    def from_cache_state(cls: Type[Self], data: dict[str, Any]) -> Self:
         cache_end = float(data.get('cache-end', -1))
         cache_duration = float(data.get('cache-duration', -1))
         fw_byte = int(data.get('fw-bytes', -1))

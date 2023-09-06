@@ -8,18 +8,18 @@ import websockets.client as websockets
 from rich.pretty import pretty_repr
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
+from modules.baseModule import BaseModule
 from src.listen.types import ListenWsData
-from src.module import Module
 
 
-class ListenWebsocket(Module):
+class ListenWebsocket(BaseModule):
     def __init__(self) -> None:
         super().__init__()
         self._data: ListenWsData
-        self.ws_data: dict[Any, Any] = dict()
+        self.ws_data: dict[Any, Any] = {}
         self.loop = asyncio.new_event_loop()
         self.last_heartbeat = time.time()
-        self.update_able: list[Callable[[ListenWsData], Any]] = list()
+        self.update_able: list[Callable[[ListenWsData], Any]] = []
 
     @property
     def data(self) -> ListenWsData:

@@ -8,9 +8,9 @@ from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
 from rich.pretty import pretty_repr
 
+from modules.baseModule import BaseModule
 from src.config import Config
 from src.listen.types import ListenWsData, Song
-from src.module import Module
 from src.modules.types import Activity, Rpc
 
 
@@ -97,7 +97,7 @@ class Payload(Payload):
         return cls(payload, clear)
 
 
-class DiscordRichPresence(Module):
+class DiscordRichPresence(BaseModule):
     def __init__(self) -> None:
         super().__init__()
         self.loop = asyncio.new_event_loop()

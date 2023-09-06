@@ -70,7 +70,7 @@ class RPC:
 class Display:
     romaji_first: bool = True
     separator: str = ', '
-    display_rpc_status: bool = False
+    # display_rpc_status: bool = False
 
 
 @dataclass

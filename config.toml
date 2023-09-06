@@ -25,7 +25,6 @@ use_artist = true
 [display]
 romaji_first = true
 separator = ", "
-display_rpc_status = true
 
 [player]
 volume_step = 10

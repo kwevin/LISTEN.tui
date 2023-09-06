@@ -11,7 +11,7 @@ class Status:
     reason: str = ''
 
 
-class Module(Thread):
+class BaseModule(Thread):
     def __init__(self) -> None:
         super().__init__(name=self.__class__.__name__)
         self._data: Any

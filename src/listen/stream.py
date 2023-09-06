@@ -2,14 +2,14 @@
 import threading
 import time
 from logging import DEBUG, INFO, WARN
-from typing import Any
+from typing import Any, Callable
 
 import mpv
 from rich.pretty import pretty_repr
 
+from modules.baseModule import BaseModule
 from src.config import Config
 from src.listen.types import DemuxerCacheState, MPVData
-from src.module import Module
 
 # class StreamPlayerVLC:
 #     def __init__(self) -> None:
@@ -47,7 +47,7 @@ from src.module import Module
 #         self.player.retain()
 
 
-class StreamPlayerMPV(Module):
+class StreamPlayerMPV(BaseModule):
     def __init__(self) -> None:
         super().__init__()
         self.config = Config.get_config()
@@ -57,6 +57,7 @@ class StreamPlayerMPV(Module):
         self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)  # pyright: ignore[reportGeneralTypeIssues]
         self._data: MPVData
         self.idle_count: int = 0
+        self.update_able: list[Callable[[MPVData], Any]] = []
 
     @property
     def data(self) -> MPVData:
@@ -67,7 +68,7 @@ class StreamPlayerMPV(Module):
         cache = self._get_value('demuxer_cache_state', None)
         if not cache:
             return None
-        return DemuxerCacheState.from_demuxer_cache_state(cache)
+        return DemuxerCacheState.from_cache_state(cache)
 
     @property
     def paused(self) -> bool | None:
@@ -144,16 +145,22 @@ class StreamPlayerMPV(Module):
         self.player.play(self.stream_url)
         self.update_status(False, 'Buffering...')
         
-        @self.player.property_observer('metadata')
-        def metadata(name: Any, new_value: Any):  # pyright: ignore[reportUnusedFunction]
+        def metadata(_: Any, new_value: Any):  # pyright: ignore[reportUnusedFunction]
             if new_value:
                 self._data = MPVData.from_metadata(new_value)
                 self._log.debug(f'New Metadata: {pretty_repr(self._data)}')
+                
+                for method in self.update_able:
+                    threading.Thread(target=method, args=(self._data,), name='metadata_updater').start()
+        self.player.observe_property('metadata', metadata)
         
         self.player.wait_for_property('metadata', cond=lambda val: True if val else False)  # pyright: ignore[reportUnknownLambdaType]
         self.player.wait_until_playing()
         self.update_status(True)
         self.player.wait_for_playback()
+    
+    def on_data_update(self, method: Callable[[MPVData], Any]):
+        self.update_able.append(method)
 
     def restart(self):
         self.player.play(self.stream_url)
