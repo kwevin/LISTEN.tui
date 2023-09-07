@@ -3,7 +3,6 @@ import asyncio
 import os
 import time
 
-from modules.baseModule import BaseModule
 from pypresence import AioPresence, DiscordNotFound
 from pypresence.exceptions import ResponseTimeout
 from pypresence.payloads import Payload
@@ -11,6 +10,7 @@ from rich.pretty import pretty_repr
 
 from ..config import Config
 from ..listen.types import ListenWsData, Song
+from ..modules.baseModule import BaseModule
 from .types import Activity, Rpc
 
 

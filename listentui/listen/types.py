@@ -303,6 +303,7 @@ class Song:
     time_end: int
     played: Optional[int] = None
     title_romaji: Optional[str] = None
+    is_favorited: bool = False
 
 
 @dataclass

@@ -1,53 +1,71 @@
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from os import _exit  # pyright: ignore
 from pathlib import Path
 from threading import Thread
-from typing import Literal
+from typing import Optional
 
-from modules.baseModule import BaseModule
-from modules.presence import DiscordRichPresence
 from psutil import pid_exists
 from readchar import key, readkey
-from rich.console import (Console, ConsoleOptions, ConsoleRenderable,
+from rich.console import (Console, ConsoleOptions, ConsoleRenderable, Group,
                           RenderResult)
 from rich.layout import Layout
 from rich.live import Live
-from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, Task
-# from rich.spinner import Spinner
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
 from .config import Config
 from .listen.client import Listen
 from .listen.stream import StreamPlayerMPV
-from .listen.types import CurrentUser, ListenWsData
+from .listen.types import CurrentUser, ListenWsData, Requester, Song
 from .listen.websocket import ListenWebsocket
 from .log import Logger
+from .modules.baseModule import BaseModule
+from .modules.presence import DiscordRichPresence
+
+
+class PreviousSongPanel(ConsoleRenderable):
+    def __init__(self, songs: list[Table]):
+        self.songs = songs
+
+    def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
+        height = options.max_height
+
+        render_group: list[Table] = []
+        total_height = height - 2
+        current_height = 0
+        total_rendered = 0
+        for song in self.songs:
+            current_height += song.row_count + 3
+            if current_height > total_height:
+                break
+            render_group.append(song)
+            total_rendered += 1
+
+        yield Panel(
+            Group(*render_group),
+            title='Previous Songs',
+            height=height,
+            # subtitle=f'{current_height}/{total_height}={total_rendered}'
+        )
 
 
 class UserPanel(ConsoleRenderable):
     def __init__(self, user: CurrentUser) -> None:
+        self.conf = Config.get_config().display
         self.user = user
 
     def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
-        def feed(count: int) -> Table:
-            table = Table(expand=True, box=None, padding=(0, 0, 1, 0))
-            for idx, feed in enumerate(self.user.feed):
-                if idx + 1 > count:
-                    break
-                table.add_row(Text(f'Favorited {feed.song.title} by {feed.song.artists_to_string()}',
-                                   justify='left', overflow='ellipsis'))
-
-            return table
         width = options.max_width
         height = options.max_height
-        layout = Layout()
+        layout = Layout(size=4)
 
-        table = Table(expand=True, box=None)
+        table = Table(expand=True, box=None, padding=(1, 0, 0, 0))
         if width > 36:
             table.add_column("Requested", justify='center')
             table.add_column("Favorited", justify='center')
@@ -62,19 +80,31 @@ class UserPanel(ConsoleRenderable):
             Text(f'{self.user.uploads}', justify='center')
         )
 
-        feed_height = height - 9
-        count = round(feed_height / 5)
-        feed_table = feed(count)
+        total_height = height - 8
+        current_height = 0
+        total_rendered = 0
+        feed_table = Table(expand=True, box=None, padding=(0, 0, 1, 0))
+        for feed in self.user.feed:
+            feed_text = Text(overflow='fold')
+            feed_text.append('Favorited ')
+            feed_text.append(f'{feed.song.title} ')
+            feed_text.append('by ', style='#f92672')
+            feed_text.append(f'{feed.song.artists_to_string(self.conf.romaji_first, self.conf.separator)}')
+            current_height += ceil(feed_text.cell_len / width) + 1
+            if current_height > total_height:
+                break
+            feed_table.add_row(feed_text)
+            total_rendered += 1
 
         layout.split_column(
-            Layout(Padding(Text(f'{self.user.display_name}', justify='center'), (1, 0, 0, 0)), name='table', size=3),
             Layout(table, name='table', size=4),
             Layout(feed_table, name='feed_table')
         )
         yield Panel(
             layout,
-            title='User',
-            height=height
+            title=self.user.display_name,
+            height=height,
+            # subtitle=f'{current_height}/{total_height}={total_rendered}'
         )
 
 
@@ -132,13 +162,7 @@ class InputHandler(BaseModule):
                     case self.kb.seek_to_end:
                         self.pl.seek_to_end()
                     case 'i':
-                        l: list[str] = []
-                        k = ''
-                        while k != key.ENTER and k != key.ESC:
-                            k = readkey()
-                            l.append(k)
-                            self.main.cmd_input = "".join(l).rstrip()
-                        # cmd = "".join(l).rstrip()
+                        pass
                     case _:
                         pass
             except KeyboardInterrupt:
@@ -147,27 +171,27 @@ class InputHandler(BaseModule):
                 _exit(1)
 
 
-class Main(Thread):
+class Main:
 
     def __init__(self) -> None:
-        super().__init__()
         self.config = Config.get_config()
         if self.config.system.instance_lock:
             self.check_instance_lock()
         self.log = Logger.create_logger(self.config.system.debug)
         self.running_modules: list[BaseModule] = []
-        self.start_time = time.time()
+        self.start_time: float = time.time()
         self.update_counter: int = 0
-        self.favourite_status: Literal[0, 1, 2] = 0
-        self.cmd_mode: bool = False
-        self.cmd_input: str = ''
+        self.logged_in: bool = False
 
         self.ws: ListenWebsocket
         self.player: StreamPlayerMPV
         self.data: ListenWsData
-        self.rpc: DiscordRichPresence | None = None
+        self.rpc: Optional[DiscordRichPresence] = None
 
         self.console = Console()
+        self.current_song: Song
+        self.current_song_table: Table
+        self.previous_songs: list[Table] = []
         self.duration_progress = Progress(BarColumn(bar_width=None), MofNTimeCompleteColumn())
         self.duration_task = self.duration_progress.add_task('Duration', total=None)
         self.layout = self.make_layout()
@@ -200,12 +224,8 @@ class Main(Thread):
             Layout(name='other', minimum_size=2)
         )
         layout['other'].split_row(
-            Layout(name='box', ratio=8),
-            Layout(name='user', ratio=2)
-        )
-        layout['box'].split_column(
-            Layout(Panel(Text("Not a Terminal")), name='terminal', ratio=9),
-            Layout(Panel(Text('> Send help')), name='input', ratio=1, size=3)
+            Layout(Panel(Text('')), name='box', ratio=8),
+            Layout(name='user', ratio=2, visible=False)
         )
         return layout
 
@@ -224,22 +244,35 @@ class Main(Thread):
         os.remove(Path().resolve().joinpath('_instance.lock'))
 
     def favorite_song(self):
-        self.favourite_status = 1
-        res = self.listen.favorite_song(self.ws.data.song.id)
-        if res:
-            self.favourite_status = 2
-        else:
-            self.favourite_status = 0
+        if not self.logged_in:
+            return
+        self.current_song.is_favorited = not self.current_song.is_favorited
+        self.update_song_table()
+        Thread(target=self.listen.favorite_song, args=(self.current_song.id, )).start()
+        Thread(target=self.update_user_table).start()
 
     def update(self, data: ListenWsData):
-        self.update_counter += 1
-        res = self.listen.check_favorite(data.song.id)
-        if res:
-            self.favourite_status = 2
+        # previous songs
+        if self.update_counter == 0:
+            for song in data.last_played:
+                self.previous_songs.append(self.create_song_table(song, show_id=True))
         else:
-            self.favourite_status = 0
+            self.previous_songs.insert(0, self.create_song_table(self.current_song, show_id=True))
+            if len(self.previous_songs) > 5:
+                self.previous_songs.pop()
+        self.layout['box'].update(PreviousSongPanel(self.previous_songs))
+        # current song table
+        self.current_song = data.song
+        self.update_song_table()
+        if self.logged_in:
+            self.current_song.is_favorited = self.listen.check_favorite(data.song.id)
+        if self.current_song.is_favorited:
+            self.update_song_table()
+
+        # tui heading
         self.layout['heading'].update(self.heading())
-        self.layout['main'].update(self.main())
+
+        self.update_counter += 1
 
     def calc_delay(self) -> str:
         if self.update_counter <= 1:
@@ -260,52 +293,55 @@ class Main(Thread):
         diff = audio_start - ws_start
         return f'{diff.total_seconds():.2f}'
 
+    def update_song_table(self):
+        self.current_song_table = self.create_song_table(self.current_song,
+                                                         self.ws.data.requester,
+                                                         self.config.display.romaji_first,
+                                                         self.config.display.separator)
+        self.current_song_table.add_row("Duration", self.duration_progress)
+
+    def update_user_table(self):
+        user = self.listen.update_current_user()
+        if user:
+            self.layout['user'].update(UserPanel(user))
+
     def heading(self) -> Panel:
         return Panel(Text(f'Listen.Moe (󰋋 {self.ws.data.listener})', justify='center'))
 
     def main(self) -> Panel:
         layout = Layout()
         layout.split_row(
-            Layout(self.main_table(), name='main_table', minimum_size=14, ratio=8),
+            Layout(self.current_song_table, name='main_table', minimum_size=14, ratio=8),
             Layout(self.other_info(), name='other_info', minimum_size=4, ratio=2)
         )
         return Panel(layout)
 
-    def main_table(self) -> Table:
+    @staticmethod
+    def create_song_table(song: Song,
+                          requester: Optional[Requester] = None,
+                          romaji_first: bool = False,
+                          separator: str = ', ',
+                          show_id: bool = False) -> Table:
+
         table = Table(expand=True, show_header=False)
         table.add_column(ratio=2)
         table.add_column(ratio=8)
+        title = Text()
 
-        if self.ws.data.requester:
-            table.add_row("Requested By", self.ws.data.requester.display_name)
-        match self.favourite_status:
-            case 0:
-                star = ""
-            case 1:
-                star = " "
-            case 2:
-                star = " "
-        table.add_row("Title", f'{star}{self.ws.data.song.title}')
-        table.add_row("Artists", self.ws.data.song.artists_to_string(
-            self.config.display.romaji_first, self.config.display.separator))
-        if self.ws.data.song.sources:
-            table.add_row("Source", self.ws.data.song.sources_to_string(
-                self.config.display.romaji_first, self.config.display.separator))
-        if self.ws.data.song.albums:
-            table.add_row("Album", self.ws.data.song.albums_to_string(
-                self.config.display.romaji_first, self.config.display.separator))
+        if requester:
+            table.add_row("Requested By", requester.display_name)
+        if song.is_favorited:
+            title.append(" ", Style(color='#f92672', bold=True))
+        title.append(song.title or '')
+        table.add_row("Title", title)
+        table.add_row("Artists", song.artists_to_string(romaji_first, separator))
+        if song.sources:
+            table.add_row("Source", song.sources_to_string(romaji_first, separator))
+        if song.albums:
+            table.add_row("Album", song.albums_to_string(romaji_first, separator))
+        if show_id:
+            table.caption = Text(f'ID: {song.id}', justify='right')
 
-        if self.ws.data.song.duration:
-            completed = (datetime.now(timezone.utc) - self.ws.data.start_time).total_seconds()
-        else:
-            completed = round(time.time() - self.ws.data.song.time_end)
-        total = self.ws.data.song.duration if self.ws.data.song.duration != 0 else 0
-
-        self.duration_progress.update(self.duration_task,
-                                      completed=completed,
-                                      total=total)
-        table.add_row("Duration", self.duration_progress)
-        # table.add_row("", self.duration_progress)
         return table
 
     def other_info(self) -> Table:
@@ -346,24 +382,20 @@ class Main(Thread):
 
         return table
 
-    def _debug(self) -> Panel:
-        table = Table.grid()
-        table.add_row("Ofd", f'{self.ws.data.song.title}', f'{self.player.data.title}')
-        table.add_row('oft', f'{self.ws.data.start_time}', f'{self.player.data.start}')
-        table.add_row('heat', f'{round(time.time() - self.ws.data.last_heartbeat)}')
-        table.add_row('cmd', f'{self.cmd_input}')
-        return Panel(table)
-
     def run(self):
         with self.console.status("Logging in...", spinner='dots'):
             if not self.config.system.token:
                 if not self.config.system.username or not self.config.system.password:
                     self.listen = Listen()
-                self.listen = Listen.login(self.config.system.username, self.config.system.password)
+                else:
+                    self.listen = Listen.login(self.config.system.username, self.config.system.password)
+                    self.logged_in = True
                 if self.listen.current_user:
                     self.config.update('system', 'token', self.listen.current_user.token)
             else:
                 self.listen = Listen.from_username_token(self.config.system.username, self.config.system.token)
+                self.logged_in = True
+
         self.setup()
 
         def init() -> Table:
@@ -389,15 +421,21 @@ class Main(Thread):
         with Live(self.layout, refresh_per_second=refresh_per_second, screen=True) as self.live:
             while True:
                 self.layout['main'].update(self.main())
+                if self.current_song.duration:
+                    completed = (datetime.now(timezone.utc) - self.ws.data.start_time).total_seconds()
+                else:
+                    completed = round(time.time() - self.current_song.time_end)
+                total = self.current_song.duration if self.current_song.duration != 0 else 0
+
+                self.duration_progress.update(self.duration_task, completed=completed, total=total)
                 time.sleep(1 / refresh_per_second)
 
 
-if __name__ == "__main__":
+def main():
     _dev = Path().resolve().joinpath('devconf.toml')
     if _dev.is_file():
         Config(_dev)
     else:
         Config(Path().resolve().joinpath('config.toml'))
     _main = Main()
-    _main.start()
-    _main.join()
+    _main.run()

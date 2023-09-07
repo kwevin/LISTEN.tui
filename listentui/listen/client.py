@@ -4,7 +4,7 @@ from functools import wraps
 from string import Template
 from threading import Lock
 from types import TracebackType
-from typing import Any, Callable, Coroutine, Optional, Self, Type
+from typing import Any, Callable, Coroutine, Optional, Self, Type, Union
 
 from gql import Client, gql
 from gql.client import ReconnectingAsyncClientSession
@@ -12,7 +12,8 @@ from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.requests import RequestsHTTPTransport
 from graphql import DocumentNode
 
-from .types import (Album, Artist, Character, CurrentUser, Link, Song, Source,
+from .types import (Album, AlbumID, Artist, ArtistID, Character, CharacterID,
+                    CurrentUser, Link, Song, SongID, Source, SourceID,
                     SystemFeed, User)
 
 
@@ -224,6 +225,12 @@ class BaseClient:
     def headers(self):
         return self._headers
 
+    @property
+    def current_user(self) -> None | CurrentUser:
+        if not self._user:
+            return
+        return self._user
+
 
 class AIOListen(BaseClient):
     def __init__(self, user: CurrentUser | None = None) -> None:
@@ -236,10 +243,9 @@ class AIOListen(BaseClient):
             self._user = user
 
     @property
-    def current_user(self):
+    def current_user(self) -> None | CurrentUser:
         if not self._user:
             return None
-        self._loop.create_task(self._update_current_user())
         return self._user
 
     @classmethod
@@ -312,7 +318,7 @@ class AIOListen(BaseClient):
                         ) -> None:
         await self._client.close_async()
 
-    async def _update_current_user(self) -> None:
+    async def update_current_user(self) -> CurrentUser | None:
         if not self._user:
             return
         current_user = self._user
@@ -327,9 +333,10 @@ class AIOListen(BaseClient):
                                  user.uploads,
                                  user.requests,
                                  user.feed, current_user.token)
+        return self._user
 
     # queries
-    async def album(self, id: int) -> Album | None:
+    async def album(self, id: Union[AlbumID, int]) -> Album | None:
         query = self.queries.album
         params = {'id': id}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -343,7 +350,7 @@ class AIOListen(BaseClient):
             image=Link.from_name('albums', album['image'])
         )
 
-    async def artist(self, id: int) -> Artist | None:
+    async def artist(self, id: Union[ArtistID, int]) -> Artist | None:
         query = self.queries.artist
         params = {'id': id}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -360,7 +367,7 @@ class AIOListen(BaseClient):
             ] if len(artist['characters']) != 0 else None
         )
 
-    async def character(self, id: int) -> Character | None:
+    async def character(self, id: Union[CharacterID, int]) -> Character | None:
         query = self.queries.character
         params = {'id': id}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -373,7 +380,7 @@ class AIOListen(BaseClient):
             name_romaji=character['nameRomaji']
         )
 
-    async def song(self, id: int) -> Song | None:
+    async def song(self, id: Union[SongID, int]) -> Song | None:
         query = self.queries.song
         params = {'id': id}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -382,7 +389,7 @@ class AIOListen(BaseClient):
             return None
         return Song.from_data(song)
 
-    async def source(self, id: int) -> Source | None:
+    async def source(self, id: Union[SourceID, int]) -> Source | None:
         query = self.queries.source
         params = {'id': id}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -415,7 +422,7 @@ class AIOListen(BaseClient):
         )
 
     @requires_auth
-    async def check_favorite(self, song: int) -> bool:
+    async def check_favorite(self, song: Union[SongID, int]) -> bool:
         query = self.queries.check_favorite
         params = {"songs": song}
         res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -426,7 +433,7 @@ class AIOListen(BaseClient):
 
     # mutations
     @requires_auth
-    async def favorite_song(self, song: int) -> None:
+    async def favorite_song(self, song: Union[SongID, int]) -> None:
         query = self.queries.favorite_song
         params = {"id": song}
         await self._session.execute(document=query, variable_values=params)  # pyright: ignore
@@ -443,12 +450,6 @@ class Listen(BaseClient):
         self._transport = RequestsHTTPTransport(url=self._ENDPOINT, headers=self._headers, retries=3)
         self._client = Client(transport=self._transport)
         self._lock = Lock()
-
-    @property
-    def current_user(self):
-        if not self._user:
-            return None
-        return self._user
 
     @classmethod
     def login(cls: Type[Self], username: str, password: str) -> Self:
@@ -510,7 +511,7 @@ class Listen(BaseClient):
         self._transport = RequestsHTTPTransport(url=self._ENDPOINT, headers=self._headers, retries=3)
         self._client = Client(transport=self._transport)
 
-    def _update_current_user(self) -> None:
+    def update_current_user(self) -> None | CurrentUser:
         if not self._user:
             return
         current_user = self._user
@@ -525,9 +526,10 @@ class Listen(BaseClient):
                                  user.uploads,
                                  user.requests,
                                  user.feed, current_user.token)
+        return self._user
 
     # queries
-    def album(self, id: int) -> Album | None:
+    def album(self, id: Union[AlbumID, int]) -> Album | None:
         with self._lock:
             query = self.queries.album
             params = {'id': id}
@@ -542,7 +544,7 @@ class Listen(BaseClient):
                 image=Link.from_name('albums', album['image'])
             )
 
-    def artist(self, id: int) -> Artist | None:
+    def artist(self, id: Union[ArtistID, int]) -> Artist | None:
         with self._lock:
             query = self.queries.artist
             params = {'id': id}
@@ -562,7 +564,7 @@ class Listen(BaseClient):
                 ] if len(artist['characters']) != 0 else None
             )
 
-    def character(self, id: int) -> Character | None:
+    def character(self, id: Union[CharacterID, int]) -> Character | None:
         with self._lock:
             query = self.queries.character
             params = {'id': id}
@@ -576,7 +578,7 @@ class Listen(BaseClient):
                 name_romaji=character['nameRomaji']
             )
 
-    def song(self, id: int) -> Song | None:
+    def song(self, id: Union[SongID, int]) -> Song | None:
         with self._lock:
             query = self.queries.song
             params = {'id': id}
@@ -586,7 +588,7 @@ class Listen(BaseClient):
                 return None
             return Song.from_data(song)
 
-    def source(self, id: int) -> Source | None:
+    def source(self, id: Union[SourceID, int]) -> Source | None:
         with self._lock:
             query = self.queries.source
             params = {'id': id}
@@ -621,7 +623,7 @@ class Listen(BaseClient):
             )
 
     @requires_auth_sync
-    def check_favorite(self, song: int) -> bool:
+    def check_favorite(self, song: Union[SongID, int]) -> bool:
         with self._lock:
             query = self.queries.check_favorite
             params = {"songs": song}
@@ -633,7 +635,7 @@ class Listen(BaseClient):
 
     # mutation
     @requires_auth_sync
-    def favorite_song(self, song: int) -> None:
+    def favorite_song(self, song: Union[SongID, int]) -> None:
         with self._lock:
             query = self.queries.favorite_song
             params = {"id": song}
