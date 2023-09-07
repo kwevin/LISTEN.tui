@@ -415,6 +415,7 @@ class Main:
         self.layout['heading'].update(self.heading())
         self.layout['main'].update(self.main())
         if self.listen.current_user:
+            self.layout['user'].visible = True
             self.layout['user'].update(UserPanel(self.listen.current_user))
 
         refresh_per_second = 30
