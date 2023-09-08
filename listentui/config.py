@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from string import Template
@@ -8,8 +9,20 @@ import tomli_w
 from readchar import key
 
 
-class ConfigNotFoundException(Exception):
+class ConfigException(Exception):
     pass
+
+
+class InvalidConfigException(Exception):
+    pass
+
+
+@dataclass
+class System:
+    username: str = ''
+    password: str = ''
+    debug: bool = False
+    instance_lock: bool = False
 
 
 @dataclass
@@ -23,7 +36,7 @@ class Keybind:
     restart_player: str = 'r'
     seek_to_end: str = 's'
 
-    def sub_key_to_str(self) -> Self:
+    def sub_identifier(self) -> Self:
         s = {k: v for k, v in key.__dict__.items() if "__" not in k}
         for i in fields(self):
             k: str = getattr(self, i.name)
@@ -31,17 +44,7 @@ class Keybind:
                 e = Template(k)
                 n = e.substitute(s)
                 setattr(self, i.name, n)
-
         return self
-
-
-@dataclass
-class System:
-    username: str = ''
-    password: str = ''
-    token: str = ''
-    debug: bool = False
-    instance_lock: bool = False
 
 
 @dataclass
@@ -51,6 +54,10 @@ class RPC:
     use_fallback: bool = True
     fallback: str = "fallback2"
     use_artist: bool = True
+
+    def __post_init__(self):
+        if len(self.default_placeholder) < 2:
+            raise InvalidConfigException("default_placeholder must be greater than two characters")
 
 
 @dataclass
@@ -64,7 +71,6 @@ class Player:
     mpv_options: dict[str, Any] = field(default_factory=dict)
     volume_step: int = 10
     restart_timeout: int = 20
-    last_volume: int = 100
 
     def __post_init__(self):
         if not self.mpv_options:
@@ -79,11 +85,17 @@ class Player:
 
 
 @dataclass
+class Persist:
+    token: str = ''
+    last_volume: int = 100
+
+
+@dataclass
 class Configuration:
-    keybind: Keybind = field(default_factory=Keybind)
     system: System = field(default_factory=System)
-    rpc: RPC = field(default_factory=RPC)
+    keybind: Keybind = field(default_factory=Keybind)
     display: Display = field(default_factory=Display)
+    rpc: RPC = field(default_factory=RPC)
     player: Player = field(default_factory=Player)
 
 
@@ -92,6 +104,15 @@ class Config:
 
     def __init__(self, config_path: Path) -> None:
         self.config_path = Path(config_path).resolve()
+        if not self.config_path.is_file():
+            self._write(self.config_path, self._default())
+        self.persist_path = Path().resolve().joinpath('.persist\\persist.toml')
+        if not self.persist_path.parent.is_dir():
+            os.mkdir(self.persist_path.parent)
+            self._write(self.persist_path, asdict(Persist()))
+        if not self.persist_path.is_file():
+            self._write(self.persist_path, asdict(Persist()))
+
         self._load()
         Config._CONFIG = self
 
@@ -116,13 +137,13 @@ class Config:
         return self._player
 
     @property
-    def config(self):
-        return self._config
+    def persist(self):
+        return self._persist
 
     @classmethod
     def get_config(cls: Type[Self]) -> Self:
         if not Config._CONFIG:
-            raise ConfigNotFoundException("No config instantiated")
+            raise ConfigException("No config instantiated")
         else:
             return Config._CONFIG
 
@@ -136,47 +157,27 @@ class Config:
         return Config(path)
 
     def _load(self) -> None:
-        if not self.config_path.is_file():
-            raise FileNotFoundError(f"Config file at {self.config_path} not found")
         with open(self.config_path, 'rb') as f:
             self._conf = tomli.load(f)
-        # keybind
-        kb = self._conf.get('keybind', None)
-        if not kb:
-            kb = Keybind()
-        else:
-            kb = Keybind(**kb).sub_key_to_str()
-        # system
-        system = self._conf.get('system', None)
-        if not system:
-            system = System()
-        else:
-            system = System(**system)
-        # rpc
-        rpc = self._conf.get('rpc', None)
-        if not rpc:
-            rpc = RPC()
-        else:
-            rpc = RPC(**rpc)
-        # display
-        ws = self._conf.get('display', None)
-        if not ws:
-            ws = Display()
-        else:
-            ws = Display(**ws)
-        # player
-        pl = self._conf.get('player', None)
-        if not pl:
-            pl = Player()
-        else:
-            pl = Player(**pl)
 
-        self._keybind = kb
-        self._system = system
-        self._rpc = rpc
-        self._display = ws
-        self._player = pl
-        self._config = Configuration(self._keybind, self._system, self._rpc, self._display, self._player)
+        for catagory in self._conf.keys():
+            match catagory:
+                case 'keybind':
+                    self._keybind = Keybind(**self._conf[catagory]).sub_identifier()
+                case 'system':
+                    self._system = System(**self._conf[catagory])
+                case 'rpc':
+                    self._rpc = RPC(**self._conf[catagory])
+                case 'display':
+                    self._display = Display(**self._conf[catagory])
+                case 'player':
+                    self._player = Player(**self._conf[catagory])
+                case _:
+                    pass
+
+        with open(self.persist_path, 'rb') as f:
+            self._pers = tomli.load(f)
+            self._persist = Persist(**self._pers)
 
     @staticmethod
     def _write(path: Path, config: dict[str, Any]) -> None:
@@ -185,20 +186,16 @@ class Config:
 
     @staticmethod
     def _default() -> dict[str, Any]:
-        e = Configuration()
-        return asdict(e)
+        return asdict(Configuration())
 
     def update(self, component: str, key: str, value: Any):
+        if component == 'persist':
+            self._pers[key] = value
+            self._write(self.persist_path, self._pers)
+            return
         self._conf[component][key] = value
         self._write(self.config_path, self._conf)
 
 
 if __name__ == "__main__":
-    from rich.pretty import pprint
-
-    # pprint(Config._default())  # pyright: ignore
     conf = Config.create_new()
-    pprint(conf.config)
-    # conf = Path().resolve().joinpath('config.toml')
-    # conf = Config(conf)
-    # pprint(conf.config)

@@ -163,6 +163,11 @@ class InputHandler(BaseModule):
                         self.pl.seek_to_end()
                     case 'i':
                         pass
+                        k = ''
+                        buf: list[str] = []
+                        while k != key.ESC and k != key.ENTER:
+                            k = readkey()
+                            buf.append(k)
                     case _:
                         pass
             except KeyboardInterrupt:
@@ -294,10 +299,7 @@ class Main:
         return f'{diff.total_seconds():.2f}'
 
     def update_song_table(self):
-        self.current_song_table = self.create_song_table(self.current_song,
-                                                         self.ws.data.requester,
-                                                         self.config.display.romaji_first,
-                                                         self.config.display.separator)
+        self.current_song_table = self.create_song_table(self.current_song, self.ws.data.requester)
         self.current_song_table.add_row("Duration", self.duration_progress)
 
     def update_user_table(self):
@@ -316,23 +318,22 @@ class Main:
         )
         return Panel(layout)
 
-    @staticmethod
-    def create_song_table(song: Song,
+    def create_song_table(self, song: Song,
                           requester: Optional[Requester] = None,
-                          romaji_first: bool = False,
-                          separator: str = ', ',
                           show_id: bool = False) -> Table:
+        romaji_first = self.config.display.romaji_first
+        separator = self.config.display.separator
 
         table = Table(expand=True, show_header=False)
         table.add_column(ratio=2)
         table.add_column(ratio=8)
         title = Text()
-
-        if requester:
-            table.add_row("Requested By", requester.display_name)
         if song.is_favorited:
             title.append(" ", Style(color='#f92672', bold=True))
         title.append(song.title or '')
+
+        if requester:
+            table.add_row("Requested By", requester.display_name)
         table.add_row("Title", title)
         table.add_row("Artists", song.artists_to_string(romaji_first, separator))
         if song.sources:
@@ -384,16 +385,16 @@ class Main:
 
     def run(self):
         with self.console.status("Logging in...", spinner='dots'):
-            if not self.config.system.token:
+            if not self.config.persist.token:
                 if not self.config.system.username or not self.config.system.password:
                     self.listen = Listen()
                 else:
                     self.listen = Listen.login(self.config.system.username, self.config.system.password)
                     self.logged_in = True
                 if self.listen.current_user:
-                    self.config.update('system', 'token', self.listen.current_user.token)
+                    self.config.update('persist', 'token', self.listen.current_user.token)
             else:
-                self.listen = Listen.from_username_token(self.config.system.username, self.config.system.token)
+                self.listen = Listen.from_username_token(self.config.system.username, self.config.persist.token)
                 self.logged_in = True
 
         self.setup()

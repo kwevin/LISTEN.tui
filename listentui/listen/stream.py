@@ -53,7 +53,7 @@ class StreamPlayerMPV(BaseModule):
         self.config = Config.get_config()
         self.stream_url = "https://listen.moe/stream"
         self.mpv_options = self.config.player.mpv_options.copy()
-        self.mpv_options['volume'] = self.config.player.last_volume
+        self.mpv_options['volume'] = self.config.persist.last_volume
         self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
         self._data: MPVData
         self.idle_count: int = 0
@@ -92,7 +92,7 @@ class StreamPlayerMPV(BaseModule):
     @volume.setter
     def volume(self, volume: int):
         setattr(self.player, 'volume', volume)
-        self.config.update('player', 'last_volume', volume)
+        self.config.update('persist', 'last_volume', volume)
 
     @property
     def ao_volume(self) -> float:
@@ -134,7 +134,6 @@ class StreamPlayerMPV(BaseModule):
                     self._log.info(f'Idle time exceed {duration}s when not paused. Restarting...')
                     self.restart()
                     self.idle_count = 0
-                    continue
                 self.idle_count += 1
             else:
                 self.idle_count = 0

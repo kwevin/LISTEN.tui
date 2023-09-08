@@ -108,7 +108,7 @@ class TestListenUnauth(TestCase):
 class TestListenAuth(TestCase):
     def setUp(self) -> None:
         conf = Path().resolve().joinpath('devconf.toml')
-        self.conf = Config(conf).config.system
+        self.conf = Config(conf).system
         self.listen = Listen.login(self.conf.username, self.conf.password)
 
     def test_current_user(self):
@@ -224,7 +224,7 @@ class TestAioListenUnath(IsolatedAsyncioTestCase):
 class TestAioListenAuth(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         conf = Path().resolve().joinpath('devconf.toml')
-        self.conf = Config(conf).config.system
+        self.conf = Config(conf).system
         self.listen = AIOListen.login(self.conf.username, self.conf.password)
 
     async def asyncTearDown(self) -> None:

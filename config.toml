@@ -1,3 +1,9 @@
+[system]
+username = ""
+password = ""
+debug = false
+instance_lock = false
+
 [keybind]
 play_pause = "${SPACE}"
 lower_volume = "${DOWN}"
@@ -8,12 +14,9 @@ favourite_song = "f"
 restart_player = "r"
 seek_to_end = "s"
 
-[system]
-username = ""
-password = ""
-token = ""
-debug = false
-instance_lock = false
+[display]
+romaji_first = true
+separator = ", "
 
 [rpc]
 enable_rpc = true
@@ -22,14 +25,9 @@ use_fallback = true
 fallback = "fallback2"
 use_artist = true
 
-[display]
-romaji_first = true
-separator = ", "
-
 [player]
 volume_step = 10
 restart_timeout = 20
-last_volume = 100
 
 [player.mpv_options]
 ad = "vorbis"
