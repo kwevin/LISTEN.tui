@@ -1,6 +1,8 @@
 # <div align="center">ListenTUI</div>
 <div align="center">A listen.moe TUI application</div>
 
+![image of application](.assets/temp.png)
+
 ---
 
 # Glossary
