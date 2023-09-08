@@ -1,2 +1,2 @@
-"%~dp0.venv\Scripts\python.exe" "%~dp0listentui\__main__.py" %*
+poetry run python "%~dp0listentui\__main__.py" %*
 pause
