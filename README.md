@@ -77,3 +77,8 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Windw](https://github.
 - `[player.mpv_options]`: additional options that can be passed into mpv (the default is recommended), see [mvp options](https://mpv.io/manual/master/#options) for more info
 # Extra
 - `drc`: add `af = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5"` to mpv_options
+- `planned features``:
+    - rpc status customisation
+    - global keybinding
+    - interactive terminal
+    - download songs
