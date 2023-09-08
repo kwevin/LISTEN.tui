@@ -1,9 +1,8 @@
-.venv
 .vscode
 .persist
-*.test
-*.dll
-__pycache__
 logs
+__pycache__
 devconf.toml
 _instance.lock
+*.test
+*.dll

@@ -187,6 +187,9 @@ class StreamPlayerMPV(BaseModule):
         self.volume += vol
 
     def lower_volume(self, vol: int = 10):
+        if (self.volume - vol) <= 0:
+            self.volume = 0
+            return
         self.volume -= vol
 
     def seek_to_end(self):
