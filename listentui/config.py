@@ -21,7 +21,6 @@ class InvalidConfigException(Exception):
 class System:
     username: str = ''
     password: str = ''
-    debug: bool = False
     instance_lock: bool = False
 
 

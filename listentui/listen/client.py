@@ -1,4 +1,7 @@
 import asyncio
+import json
+import time
+from base64 import b64decode
 from dataclasses import dataclass
 from functools import wraps
 from string import Template
@@ -231,6 +234,13 @@ class BaseClient:
             return
         return self._user
 
+    @staticmethod
+    def _validate_token(token: str) -> bool:
+        jwt_payload: dict[str, Any] = json.loads(b64decode(token.split('.')[1] + '=='))
+        if time.time() >= jwt_payload['exp']:
+            return False
+        return True
+
 
 class AIOListen(BaseClient):
     def __init__(self, user: CurrentUser | None = None) -> None:
@@ -249,48 +259,34 @@ class AIOListen(BaseClient):
         return self._user
 
     @classmethod
-    def login(cls: Type[Self], username: str, password: str) -> Self:
+    def login(cls: Type[Self], username: str, password: str, token: Optional[str] = None) -> Self:  # type: ignore
+        if token:
+            if not cls._validate_token(token):
+                return cls.login(username, password)
         headers = {
             'Accept': "*/*",
             'content-type': 'application/json',
         }
-        transport = RequestsHTTPTransport(url=AIOListen._ENDPOINT, headers=headers, retries=3)
+        if token:
+            headers.update({'Authorization': f'Bearer {token}'})
+        transport = RequestsHTTPTransport(url=Listen._ENDPOINT, headers=headers, retries=3)
         client = Client(transport=transport)
-        query = cls._QUERIES.login
-        params = {'username': username,
-                  'password': password,
-                  "systemOffset": cls._SYSTEM_OFFSET,
-                  "systemCount": cls._SYSTEM_COUNT}
-        res = client.execute(document=query, variable_values=params)  # pyright: ignore
-        login = res['login']
-        user = res['login']['user']
-        return cls(CurrentUser(
-            uuid=user['uuid'],
-            username=user['username'],
-            display_name=user['displayName'],
-            bio=user['bio'],
-            favorites=user['favorites']['count'],
-            uploads=user['uploads']['count'],
-            requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
-            token=login['token']
-        ))
 
-    @classmethod
-    def from_username_token(cls: Type[Self], username: str, token: str) -> Self:
-        headers = {
-            'Accept': "*/*",
-            'content-type': 'application/json',
-            'Authorization': f'Bearer {token}'
-        }
-        transport = RequestsHTTPTransport(url=AIOListen._ENDPOINT, headers=headers, retries=3)
-        client = Client(transport=transport)
-        query = cls._QUERIES.user
-        params = {'username': username, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
-        res = client.execute(document=query, variable_values=params)  # pyright: ignore
-        user = res.get('user', None)
-        if not user:
-            raise Exception("What the")
+        if token:
+            query = cls._QUERIES.user
+            params = {'username': username, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
+            res = client.execute(document=query, variable_values=params)  # pyright: ignore
+            user = res['user']
+        else:
+            query = cls._QUERIES.login
+            params = {'username': username,
+                      'password': password,
+                      "systemOffset": cls._SYSTEM_OFFSET,
+                      "systemCount": cls._SYSTEM_COUNT}
+            res = client.execute(document=query, variable_values=params)  # pyright: ignore
+            user = res['login']['user']
+            token: str = res['login']['token']
+
         return cls(CurrentUser(
             uuid=user['uuid'],
             username=user['username'],
@@ -452,48 +448,34 @@ class Listen(BaseClient):
         self._lock = Lock()
 
     @classmethod
-    def login(cls: Type[Self], username: str, password: str) -> Self:
+    def login(cls: Type[Self], username: str, password: str, token: Optional[str] = None) -> Self:  # type: ignore
+        if token:
+            if not cls._validate_token(token):
+                return cls.login(username, password)
         headers = {
             'Accept': "*/*",
             'content-type': 'application/json',
         }
+        if token:
+            headers.update({'Authorization': f'Bearer {token}'})
         transport = RequestsHTTPTransport(url=Listen._ENDPOINT, headers=headers, retries=3)
         client = Client(transport=transport)
-        query = cls._QUERIES.login
-        params = {'username': username,
-                  'password': password,
-                  "systemOffset": cls._SYSTEM_OFFSET,
-                  "systemCount": cls._SYSTEM_COUNT}
-        res = client.execute(document=query, variable_values=params)  # pyright: ignore
-        login = res['login']
-        user = res['login']['user']
-        return cls(CurrentUser(
-            uuid=user['uuid'],
-            username=user['username'],
-            display_name=user['displayName'],
-            bio=user['bio'],
-            favorites=user['favorites']['count'],
-            uploads=user['uploads']['count'],
-            requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
-            token=login['token']
-        ))
 
-    @classmethod
-    def from_username_token(cls: Type[Self], username: str, token: str) -> Self:
-        headers = {
-            'Accept': "*/*",
-            'content-type': 'application/json',
-            'Authorization': f'Bearer {token}'
-        }
-        transport = RequestsHTTPTransport(url=Listen._ENDPOINT, headers=headers, retries=3)
-        client = Client(transport=transport)
-        query = cls._QUERIES.user
-        params = {'username': username, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
-        res = client.execute(document=query, variable_values=params)  # pyright: ignore
-        user = res.get('user', None)
-        if not user:
-            raise Exception("What the")
+        if token:
+            query = cls._QUERIES.user
+            params = {'username': username, "systemOffset": cls._SYSTEM_OFFSET, "systemCount": cls._SYSTEM_COUNT}
+            res = client.execute(document=query, variable_values=params)  # pyright: ignore
+            user = res['user']
+        else:
+            query = cls._QUERIES.login
+            params = {'username': username,
+                      'password': password,
+                      "systemOffset": cls._SYSTEM_OFFSET,
+                      "systemCount": cls._SYSTEM_COUNT}
+            res = client.execute(document=query, variable_values=params)  # pyright: ignore
+            user = res['login']['user']
+            token: str = res['login']['token']
+
         return cls(CurrentUser(
             uuid=user['uuid'],
             username=user['username'],

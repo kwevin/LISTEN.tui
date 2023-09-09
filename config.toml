@@ -1,7 +1,6 @@
 [system]
 username = ""
 password = ""
-debug = false
 instance_lock = false
 
 [keybind]

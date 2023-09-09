@@ -2,6 +2,7 @@
 import asyncio
 import os
 import time
+from json import JSONDecodeError
 
 from pypresence import AioPresence, DiscordNotFound
 from pypresence.exceptions import ResponseTimeout
@@ -172,10 +173,10 @@ class DiscordRichPresence(BaseModule):
                 self.update_status(True)
             except DiscordNotFound:
                 self.update_status(True)
-                # self.update_status(False, "Discord Not Found")
                 self._log.info("Discord Not Found")
                 await asyncio.sleep(120)
-
+            except JSONDecodeError:
+                pass
             while self.status.running:
                 await asyncio.sleep(1)
 

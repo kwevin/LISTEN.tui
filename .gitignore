@@ -1,6 +1,7 @@
 .vscode
 .persist
 logs
+dist
 __pycache__
 devconf.toml
 _instance.lock

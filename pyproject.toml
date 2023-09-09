@@ -25,3 +25,7 @@ isort = "^5.12.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+listentui = 'listentui.__main__:run'
+listentuidev = 'listentui.__main__:rundev'

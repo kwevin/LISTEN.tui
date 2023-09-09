@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,6 @@ from .listen.client import Listen
 from .listen.stream import StreamPlayerMPV
 from .listen.types import CurrentUser, ListenWsData, Requester, Song
 from .listen.websocket import ListenWebsocket
-from .log import Logger
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
 
@@ -182,7 +182,7 @@ class Main:
         self.config = Config.get_config()
         if self.config.system.instance_lock:
             self.check_instance_lock()
-        self.log = Logger.create_logger(self.config.system.debug)
+        self.log = logging.getLogger(__name__)
         self.running_modules: list[BaseModule] = []
         self.start_time: float = time.time()
         self.update_counter: int = 0
@@ -383,20 +383,29 @@ class Main:
 
         return table
 
-    def run(self):
+    def login(self):
+        username = self.config.system.username
+        password = self.config.system.password
+        token = self.config.persist.token
+
         with self.console.status("Logging in...", spinner='dots'):
-            if not self.config.persist.token:
-                if not self.config.system.username or not self.config.system.password:
+            if not token:
+                if not username or not password:
                     self.listen = Listen()
                 else:
-                    self.listen = Listen.login(self.config.system.username, self.config.system.password)
+                    self.listen = Listen.login(username, password)
                     self.logged_in = True
                 if self.listen.current_user:
                     self.config.update('persist', 'token', self.listen.current_user.token)
             else:
-                self.listen = Listen.from_username_token(self.config.system.username, self.config.persist.token)
-                self.logged_in = True
+                if not username or not password:
+                    self.listen = Listen()
+                else:
+                    self.listen = Listen.login(username, password, token)
+                    self.logged_in = True
 
+    def run(self):
+        self.login()
         self.setup()
 
         def init() -> Table:
@@ -434,10 +443,5 @@ class Main:
 
 
 def main():
-    _dev = Path().resolve().joinpath('devconf.toml')
-    if _dev.is_file():
-        Config(_dev)
-    else:
-        Config(Path().resolve().joinpath('config.toml'))
     _main = Main()
     _main.run()
