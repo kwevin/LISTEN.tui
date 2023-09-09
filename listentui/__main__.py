@@ -16,7 +16,11 @@ from listentui.main import main
 
 
 def run():
-    Config(Path().resolve().joinpath('config.toml'))
+    _conf = Path().resolve().joinpath('config.toml')
+    if not _conf.is_file():
+        Config.create_new()
+    else:
+        Config(_conf)
     main()
 
 

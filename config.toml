@@ -18,11 +18,17 @@ romaji_first = true
 separator = ", "
 
 [rpc]
-enable_rpc = true
+enable = true
 default_placeholder = " ♪"
-use_fallback = true
 fallback = "fallback2"
+use_fallback = true
 use_artist = true
+detail = "${title}"
+state = "${artist}"
+large_text = "${source} ${title}"
+small_text = "${artist}"
+show_time_left = true
+show_small_image = true
 
 [player]
 volume_step = 10

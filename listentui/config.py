@@ -2,7 +2,7 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from string import Template
-from typing import Any, Self, Type
+from typing import Any, Optional, Self, Type
 
 import tomli
 import tomli_w
@@ -48,11 +48,17 @@ class Keybind:
 
 @dataclass
 class RPC:
-    enable_rpc: bool = True
+    enable: bool = True
     default_placeholder: str = " ♪"
-    use_fallback: bool = True
     fallback: str = "fallback2"
+    use_fallback: bool = True
     use_artist: bool = True
+    detail: str = '${title}'
+    state: str = '${artist}'
+    large_text: str = '${source} ${title}'
+    small_text: str = '${artist}'
+    show_time_left: bool = True
+    show_small_image: bool = True
 
     def __post_init__(self):
         if len(self.default_placeholder) < 2:
@@ -147,13 +153,13 @@ class Config:
             return Config._CONFIG
 
     @classmethod
-    def create_new(cls: Type[Self], path: Path | None = None) -> Self:
+    def create_new(cls: Type[Self], path: Optional[Path] = None) -> Self:
         if not path:
             path = Path().resolve().joinpath('config.toml')
         else:
             path = path
         Config._write(path, Config._default())
-        return Config(path)
+        return cls(path)
 
     def _load(self) -> None:
         with open(self.config_path, 'rb') as f:

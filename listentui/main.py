@@ -213,7 +213,7 @@ class Main:
         self.running_modules.append(self.input_handler)
 
         # optional
-        if self.config.rpc.enable_rpc:
+        if self.config.rpc.enable:
             self.rpc = DiscordRichPresence()
             self.ws.on_data_update(self.rpc.update)
             self.running_modules.append(self.rpc)

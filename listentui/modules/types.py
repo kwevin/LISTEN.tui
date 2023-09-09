@@ -20,8 +20,8 @@ class Activity:
 @dataclass
 class Rpc:
     is_arrpc: bool
-    detail: str
-    state: str
+    detail: str | None
+    state: str | None
     end: int | None
     large_image: str | None
     large_text: str | None
