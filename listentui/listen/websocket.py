@@ -18,12 +18,16 @@ class ListenWebsocket(BaseModule):
         self._data: ListenWsData
         self.ws_data: dict[Any, Any] = {}
         self.loop = asyncio.new_event_loop()
-        self.last_heartbeat = time.time()
+        self._last_heartbeat = time.time()
         self.update_able: list[Callable[[ListenWsData], Any]] = []
 
     @property
     def data(self) -> ListenWsData:
         return self._data
+
+    @property
+    def last_heartbeat(self) -> float:
+        return self._last_heartbeat
 
     def on_data_update(self, method: Callable[[ListenWsData], Any]) -> None:
         self.update_able.append(method)
@@ -53,7 +57,7 @@ class ListenWebsocket(BaseModule):
                     match self.ws_data['op']:
                         case 0:
                             heartbeat = self.ws_data['d']['heartbeat'] / 1000
-                            self.loop.create_task(self.ws_keepalive(heartbeat))
+                            asyncio.create_task(self.ws_keepalive(heartbeat), name='ws_keepalive')
 
                         case 1:
                             self._log.info(f"Data Received: {pretty_repr(self.ws_data)}")
@@ -64,7 +68,7 @@ class ListenWebsocket(BaseModule):
                             self.update_status(True)
                             asyncio.create_task(self.update_update_able())
                         case 10:
-                            self._data.last_heartbeat = time.time()
+                            self._last_heartbeat = time.time()
 
                         case _:
                             pass

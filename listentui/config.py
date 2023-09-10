@@ -34,6 +34,7 @@ class Keybind:
     favourite_song: str = 'f'
     restart_player: str = 'r'
     seek_to_end: str = 's'
+    toggle_terminal: str = 'i'
 
     def sub_identifier(self) -> Self:
         s = {k: v for k, v in key.__dict__.items() if "__" not in k}

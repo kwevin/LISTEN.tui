@@ -25,11 +25,13 @@ class Logger(logging.Logger):
 
         logging.basicConfig(
             level=level,
-            format="[%(thread)d][%(levelname)s] %(threadName)s: %(message)s",
-            handlers=[file_handler]
+            format="(%(asctime)s)[%(thread)d][%(levelname)s] %(threadName)s: %(message)s",
+            handlers=[file_handler],
+            datefmt="%H:%M:%S"
         )
 
         log = logging.getLogger("Listen_CLI")
+        log.info('\n')
         log.info("========== Listen RPC ==========")
         log.info(f"Started at {datetime.datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}")
         log.info("================================")

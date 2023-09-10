@@ -29,6 +29,17 @@ from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
 
 
+class TerminalPanel(ConsoleRenderable):
+    def __init__(self) -> None:
+        pass
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        ...
+
+    def run(self, cmd: str) -> None:
+        ...
+
+
 class PreviousSongPanel(ConsoleRenderable):
     def __init__(self, songs: list[Table]):
         self.songs = songs
@@ -137,7 +148,7 @@ class InputHandler(BaseModule):
         self.pl = self.main.player
 
     @property
-    def data(self):
+    def data(self) -> None:
         return None
 
     def run(self) -> None:
@@ -161,7 +172,7 @@ class InputHandler(BaseModule):
                         self.pl.play_pause()
                     case self.kb.seek_to_end:
                         self.pl.seek_to_end()
-                    case 'i':
+                    case self.kb.toggle_terminal:
                         pass
                         k = ''
                         buf: list[str] = []
@@ -201,7 +212,7 @@ class Main:
         self.duration_task = self.duration_progress.add_task('Duration', total=None)
         self.layout = self.make_layout()
 
-    def setup(self):
+    def setup(self) -> None:
         self.ws = ListenWebsocket()
         self.running_modules.append(self.ws)
         self.ws.on_data_update(self.update)
@@ -234,7 +245,7 @@ class Main:
         )
         return layout
 
-    def check_instance_lock(self):
+    def check_instance_lock(self) -> None:
         instance_lock = Path().resolve().joinpath('_instance.lock')
         if instance_lock.is_file():
             with open(instance_lock, 'r') as lock:
@@ -245,10 +256,10 @@ class Main:
         with open(instance_lock, 'w') as lock:
             lock.write(f'{os.getpid()}')
 
-    def free_instance_lock(self):
+    def free_instance_lock(self) -> None:
         os.remove(Path().resolve().joinpath('_instance.lock'))
 
-    def favorite_song(self):
+    def favorite_song(self) -> None:
         if not self.logged_in:
             return
         self.current_song.is_favorited = not self.current_song.is_favorited
@@ -256,7 +267,7 @@ class Main:
         Thread(target=self.listen.favorite_song, args=(self.current_song.id, )).start()
         Thread(target=self.update_user_table).start()
 
-    def update(self, data: ListenWsData):
+    def update(self, data: ListenWsData) -> None:
         # previous songs
         if self.update_counter == 0:
             for song in data.last_played:
@@ -298,11 +309,11 @@ class Main:
         diff = audio_start - ws_start
         return f'{diff.total_seconds():.2f}'
 
-    def update_song_table(self):
+    def update_song_table(self) -> None:
         self.current_song_table = self.create_song_table(self.current_song, self.ws.data.requester)
         self.current_song_table.add_row("Duration", self.duration_progress)
 
-    def update_user_table(self):
+    def update_user_table(self) -> None:
         user = self.listen.update_current_user()
         if user:
             self.layout['user'].update(UserPanel(user))
@@ -376,7 +387,7 @@ class Main:
         table.add_row(f"󰦒  {self.calc_delay()}s",)
 
         table.add_section()
-        last_time = round(time.time() - self.ws.data.last_heartbeat)
+        last_time = round(time.time() - self.ws.last_heartbeat)
         heartbeat_status = "Alive" if last_time < 40 else f"Dead ({last_time})"
         table.add_row(f"  {heartbeat_status}")
         table.add_row(f"󰥔  {timedelta(seconds=round(time.time() - self.start_time))}")

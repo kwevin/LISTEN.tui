@@ -1,2 +1,2 @@
-poetry run python "%~dp0listentui\__main__.py" %*
+poetry run listentui %*
 pause

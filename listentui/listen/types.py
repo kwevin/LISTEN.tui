@@ -352,7 +352,6 @@ class ListenWsData:
     start_time: datetime
     last_played: list["Song"]
     listener: int
-    last_heartbeat: float = time()
 
 
 @dataclass

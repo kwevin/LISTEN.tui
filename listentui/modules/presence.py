@@ -4,7 +4,7 @@ import os
 import time
 from json import JSONDecodeError
 from string import Template
-from threading import Lock
+from threading import RLock
 from typing import Any
 
 from pypresence import AioPresence, DiscordNotFound
@@ -111,7 +111,7 @@ class DiscordRichPresence(BaseModule):
         self.romaji_first = Config.get_config().display.romaji_first
         self.separator = Config.get_config().display.separator
         self.song: Song
-        self._lock = Lock()
+        self._lock = RLock()
         self._data: Rpc
 
     @property
@@ -183,16 +183,23 @@ class DiscordRichPresence(BaseModule):
         return [{"label": "Join radio", "url": "https://listen.moe/"}]
 
     async def create_dict(self, song: Song) -> dict[str, Any]:
-        return {
+        source_string = song.sources_to_string(self.romaji_first, self.separator)
+        if source_string:
+            source_string = f'[{source_string}]'
+        song_dict = {
             "id": song.id,
             "title": song.title,
-            "source": f'[{song.sources_to_string(self.romaji_first, self.separator)}]',
+            "source": source_string,
             "source_image": song.source_image(url=True),
             "artist": song.artists_to_string(self.romaji_first, self.separator),
             "artist_image": song.artist_image(url=True),
             "album": song.albums_to_string(self.romaji_first, self.separator),
             "album_image": song.album_image(url=True)
         }
+        for k, v in song_dict.items():
+            if not v:
+                song_dict[k] = ''
+        return song_dict
 
     async def connect(self):
         while self._running:
@@ -272,7 +279,7 @@ class DiscordRichPresence(BaseModule):
                 self._log.info("[RPC] TimeoutError")
             except Exception as exc:
                 self.update_status(False, f"{exc}")
-                self._log.info("Exception has occured")
+                self._log.exception("Exception has occured")
 
 
 if __name__ == "__main__":
