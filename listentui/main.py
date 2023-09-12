@@ -2,11 +2,12 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 from math import ceil
 from os import _exit  # pyright: ignore
 from pathlib import Path
 from threading import Thread
-from typing import Optional
+from typing import Any, Callable, Optional, Union
 
 from psutil import pid_exists
 from readchar import key, readkey
@@ -23,10 +24,17 @@ from rich.text import Text
 from .config import Config
 from .listen.client import Listen
 from .listen.stream import StreamPlayerMPV
-from .listen.types import CurrentUser, ListenWsData, Requester, Song
+from .listen.types import CurrentUser, ListenWsData, MPVData, Requester, Song
 from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
+
+
+def threaded(func: Callable[..., Any]) -> Any:
+    @wraps(func)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        Thread(target=func, args=(self, *args,), kwargs=kwargs).start()
+    return wrapper
 
 
 class TerminalPanel(ConsoleRenderable):
@@ -41,8 +49,12 @@ class TerminalPanel(ConsoleRenderable):
 
 
 class PreviousSongPanel(ConsoleRenderable):
-    def __init__(self, songs: list[Table]):
-        self.songs = songs
+    def __init__(self, songs: list[Song]):
+        self.romaji_first = Config.get_config().display.romaji_first
+        self.separator = Config.get_config().display.separator
+        self.songs_table: list[Table] = []
+        for song in songs:
+            self.songs_table.append(self.create_song_table(song))
 
     def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
         height = options.max_height
@@ -51,7 +63,7 @@ class PreviousSongPanel(ConsoleRenderable):
         total_height = height - 2
         current_height = 0
         total_rendered = 0
-        for song in self.songs:
+        for song in self.songs_table:
             current_height += song.row_count + 3
             if current_height > total_height:
                 break
@@ -64,6 +76,28 @@ class PreviousSongPanel(ConsoleRenderable):
             height=height,
             # subtitle=f'{current_height}/{total_height}={total_rendered}'
         )
+
+    def add(self, song: Song) -> None:
+        self.songs_table.insert(0, self.create_song_table(song))
+        if len(self.songs_table) > 5:
+            self.songs_table.pop()
+
+    def create_song_table(self, song: Song) -> Table:
+        table = Table(expand=True, show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        title = Text()
+        if song.is_favorited:
+            title.append(" ", Style(color='#f92672', bold=True))
+        title.append(song.title or '')
+        table.add_row("Title", title)
+        table.add_row("Artists", song.artists_to_string(self.romaji_first, self.separator))
+        if song.sources:
+            table.add_row("Source", song.sources_to_string(self.romaji_first, self.separator))
+        if song.albums:
+            table.add_row("Album", song.albums_to_string(self.romaji_first, self.separator))
+        table.caption = Text(f"ID: {song.id}", justify='right')
+        return table
 
 
 class UserPanel(ConsoleRenderable):
@@ -117,6 +151,116 @@ class UserPanel(ConsoleRenderable):
             height=height,
             # subtitle=f'{current_height}/{total_height}={total_rendered}'
         )
+
+
+class InfoPanel(ConsoleRenderable):
+    def __init__(self, player: StreamPlayerMPV, websocket: ListenWebsocket) -> None:
+        self.romaji_first = Config.get_config().display.romaji_first
+        self.separator = Config.get_config().display.separator
+        self.duration_progress = Progress(BarColumn(bar_width=None), MofNTimeCompleteColumn())
+        self.duration_task = self.duration_progress.add_task('Duration', total=None)
+        self.ws_data = websocket.data
+        self.current_song = self.create_song_table(self.ws_data.song, self.ws_data.requester)
+        self.ws = websocket
+        self.player = player
+        self.player.on_data_update(self.update)
+        self.song_delay = self.calc_delay(self.player.data, self.ws_data)
+        self.start_time = time.time()
+        self.layout = Layout()
+        self.layout.split_row(
+            Layout(self.current_song, name='main_table', minimum_size=14, ratio=8),
+            Layout(self.create_info_table(), name='other_info', minimum_size=4, ratio=2)
+        )
+        pass
+
+    def __rich_console__(self, _: Console, __: ConsoleOptions) -> RenderResult:
+        if self.ws_data.song.duration:
+            completed = (datetime.now(timezone.utc) - self.ws_data.start_time).total_seconds()
+        else:
+            completed = round(time.time() - self.ws_data.song.time_end)
+        total = self.ws_data.song.duration if self.ws_data.song.duration != 0 else 0
+        self.duration_progress.update(self.duration_task, completed=completed, total=total)
+
+        self.layout['other_info'].update(self.create_info_table())
+        yield Panel(self.layout)
+
+    def update(self, data: Union[ListenWsData, MPVData, Song]) -> None:
+        if isinstance(data, MPVData):
+            self.song_delay = self.calc_delay(data, self.ws_data)
+        elif isinstance(data, Song):
+            self.current_song = self.create_song_table(data, self.ws_data.requester)
+        else:
+            self.current_song = self.create_song_table(data.song, data.requester)
+            self.song_delay = self.calc_delay(self.player.data, data)
+
+    def create_song_table(self, song: Song, requester: Optional[Requester] = None) -> Table:
+        table = Table(expand=True, show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        title = Text()
+        if song.is_favorited:
+            title.append(" ", Style(color='#f92672', bold=True))
+        title.append(song.title or '')
+
+        if requester:
+            table.add_row("Requested By", requester.display_name)
+        table.add_row("Title", title)
+        table.add_row("Artists", song.artists_to_string(self.romaji_first, self.separator))
+        if song.sources:
+            table.add_row("Source", song.sources_to_string(self.romaji_first, self.separator))
+        if song.albums:
+            table.add_row("Album", song.albums_to_string(self.romaji_first, self.separator))
+        table.add_row("Duration", self.duration_progress)
+        return table
+
+    def create_info_table(self) -> Table:
+        table = Table(expand=True, show_header=False)
+
+        table.add_column()
+        if self.player.volume > 60:
+            vol_icon = '󰕾 '
+        elif self.player.volume > 30:
+            vol_icon = '󰖀 '
+        elif self.player.volume > 0:
+            vol_icon = '󰕿 '
+        elif self.player.volume == 0:
+            vol_icon = '󰝟 '
+        else:
+            vol_icon = '󰖁 '
+
+        if self.player.cache:
+            cache_duration = self.player.cache.cache_duration
+            cache_size = self.player.cache.fw_byte
+        else:
+            cache_duration = -1
+            cache_size = 0
+
+        table.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
+        table.add_row(f"{vol_icon} {self.player.volume}")
+        table.add_row(f"  {cache_duration:.2f}s/{cache_size/1000:.0f}KB")
+        table.add_row(f"󰦒  {self.song_delay}s",)
+
+        table.add_section()
+        last_time = round(time.time() - self.ws.last_heartbeat)
+        heartbeat_status = "Alive" if last_time < 40 else f"Dead ({last_time})"
+        table.add_row(f"  {heartbeat_status}")
+        table.add_row(f"󰥔  {timedelta(seconds=round(time.time() - self.start_time))}")
+
+        return table
+
+    def calc_delay(self, player_data: MPVData, ws_data: ListenWsData) -> str:
+        ws_start = ws_data.start_time
+        ws_song = ws_data.song.title
+        audio_start = player_data.start
+        audio_song = player_data.title
+        if ws_song and audio_song:
+            if ws_song not in audio_song:
+                return "???"
+        else:
+            return "???"
+
+        diff = audio_start - ws_start
+        return f'{diff.total_seconds():.2f}'
 
 
 class MofNTimeCompleteColumn(MofNCompleteColumn):
@@ -206,8 +350,6 @@ class Main:
 
         self.console = Console()
         self.current_song: Song
-        self.current_song_table: Table
-        self.previous_songs: list[Table] = []
         self.duration_progress = Progress(BarColumn(bar_width=None), MofNTimeCompleteColumn())
         self.duration_task = self.duration_progress.add_task('Duration', total=None)
         self.layout = self.make_layout()
@@ -263,56 +405,32 @@ class Main:
         if not self.logged_in:
             return
         self.current_song.is_favorited = not self.current_song.is_favorited
-        self.update_song_table()
+        self.info_panel.update(self.current_song)
         Thread(target=self.listen.favorite_song, args=(self.current_song.id, )).start()
-        Thread(target=self.update_user_table).start()
+        self.update_user_table()
 
     def update(self, data: ListenWsData) -> None:
         # previous songs
         if self.update_counter == 0:
-            for song in data.last_played:
-                self.previous_songs.append(self.create_song_table(song, show_id=True))
+            self.previous_panel = PreviousSongPanel(data.last_played)
         else:
-            self.previous_songs.insert(0, self.create_song_table(self.current_song, show_id=True))
-            if len(self.previous_songs) > 5:
-                self.previous_songs.pop()
-        self.layout['box'].update(PreviousSongPanel(self.previous_songs))
+            self.previous_panel.add(data.song)
+            
+        self.layout['box'].update(self.previous_panel)
         # current song table
         self.current_song = data.song
-        self.update_song_table()
+        self.info_panel.update(data)
         if self.logged_in:
             self.current_song.is_favorited = self.listen.check_favorite(data.song.id)
         if self.current_song.is_favorited:
-            self.update_song_table()
+            self.info_panel.update(self.current_song)
 
         # tui heading
         self.layout['heading'].update(self.heading())
 
         self.update_counter += 1
 
-    def calc_delay(self) -> str:
-        if self.update_counter <= 1:
-            return "???"
-        ws_start = self.ws.data.start_time
-        ws_song = self.ws.data.song.title
-        if self.player.data:
-            audio_start = self.player.data.start
-            audio_song = self.player.data.title
-            if ws_song and audio_song:
-                if ws_song not in audio_song:
-                    return "???"
-            else:
-                return "???"
-        else:
-            return "???"
-
-        diff = audio_start - ws_start
-        return f'{diff.total_seconds():.2f}'
-
-    def update_song_table(self) -> None:
-        self.current_song_table = self.create_song_table(self.current_song, self.ws.data.requester)
-        self.current_song_table.add_row("Duration", self.duration_progress)
-
+    @threaded
     def update_user_table(self) -> None:
         user = self.listen.update_current_user()
         if user:
@@ -320,79 +438,6 @@ class Main:
 
     def heading(self) -> Panel:
         return Panel(Text(f'Listen.Moe (󰋋 {self.ws.data.listener})', justify='center'))
-
-    def main(self) -> Panel:
-        layout = Layout()
-        layout.split_row(
-            Layout(self.current_song_table, name='main_table', minimum_size=14, ratio=8),
-            Layout(self.other_info(), name='other_info', minimum_size=4, ratio=2)
-        )
-        return Panel(layout)
-
-    def create_song_table(self, song: Song,
-                          requester: Optional[Requester] = None,
-                          show_id: bool = False) -> Table:
-        romaji_first = self.config.display.romaji_first
-        separator = self.config.display.separator
-
-        table = Table(expand=True, show_header=False)
-        table.add_column(ratio=2)
-        table.add_column(ratio=8)
-        title = Text()
-        if song.is_favorited:
-            title.append(" ", Style(color='#f92672', bold=True))
-        title.append(song.title or '')
-
-        if requester:
-            table.add_row("Requested By", requester.display_name)
-        table.add_row("Title", title)
-        table.add_row("Artists", song.artists_to_string(romaji_first, separator))
-        if song.sources:
-            table.add_row("Source", song.sources_to_string(romaji_first, separator))
-        if song.albums:
-            table.add_row("Album", song.albums_to_string(romaji_first, separator))
-        if show_id:
-            table.caption = Text(f'ID: {song.id}', justify='right')
-
-        return table
-
-    def other_info(self) -> Table:
-        table = Table(expand=True, show_header=False)
-
-        if not all([i.status.running for i in self.running_modules]):
-            return table
-
-        table.add_column()
-        if self.player.volume > 60:
-            vol_icon = '󰕾 '
-        elif self.player.volume > 30:
-            vol_icon = '󰖀 '
-        elif self.player.volume > 0:
-            vol_icon = '󰕿 '
-        elif self.player.volume == 0:
-            vol_icon = '󰝟 '
-        else:
-            vol_icon = '󰖁 '
-
-        if self.player.cache:
-            cache_duration = self.player.cache.cache_duration
-            cache_size = self.player.cache.fw_byte
-        else:
-            cache_duration = -1
-            cache_size = 0
-
-        table.add_row(f"{'󰏤 ' if self.player.paused else '󰐊 '} {'Paused' if self.player.paused else 'Playing'}")
-        table.add_row(f"{vol_icon} {self.player.volume}")
-        table.add_row(f"  {cache_duration:.2f}s/{cache_size/1000:.0f}KB")
-        table.add_row(f"󰦒  {self.calc_delay()}s",)
-
-        table.add_section()
-        last_time = round(time.time() - self.ws.last_heartbeat)
-        heartbeat_status = "Alive" if last_time < 40 else f"Dead ({last_time})"
-        table.add_row(f"  {heartbeat_status}")
-        table.add_row(f"󰥔  {timedelta(seconds=round(time.time() - self.start_time))}")
-
-        return table
 
     def login(self):
         username = self.config.system.username
@@ -433,8 +478,9 @@ class Main:
                 live.update(init())
                 time.sleep(0.1)
 
+        self.info_panel = InfoPanel(self.player, self.ws)
         self.layout['heading'].update(self.heading())
-        self.layout['main'].update(self.main())
+        self.layout['main'].update(self.info_panel)
         if self.listen.current_user:
             self.layout['user'].visible = True
             self.layout['user'].update(UserPanel(self.listen.current_user))
@@ -442,14 +488,7 @@ class Main:
         refresh_per_second = 30
         with Live(self.layout, refresh_per_second=refresh_per_second, screen=True) as self.live:
             while True:
-                self.layout['main'].update(self.main())
-                if self.current_song.duration:
-                    completed = (datetime.now(timezone.utc) - self.ws.data.start_time).total_seconds()
-                else:
-                    completed = round(time.time() - self.current_song.time_end)
-                total = self.current_song.duration if self.current_song.duration != 0 else 0
-
-                self.duration_progress.update(self.duration_task, completed=completed, total=total)
+                self.layout['main'].update(self.info_panel)
                 time.sleep(1 / refresh_per_second)
 
 
