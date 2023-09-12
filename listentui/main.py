@@ -162,8 +162,8 @@ class InfoPanel(ConsoleRenderable):
         self.ws = websocket
         self.player = player
         self.player.on_data_update(self.calc_delay)
-        self.current_song: Table
         self.ws_data: ListenWsData
+        self.current_song: Table
         self.start_time = time.time()
         self.song_delay = 0
         self.layout = Layout()
@@ -173,7 +173,7 @@ class InfoPanel(ConsoleRenderable):
         )
         pass
 
-    def __rich_console__(self, _: Console, __: ConsoleOptions) -> RenderResult:
+    def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
         if not self.current_song or not self.ws_data:
             yield Panel(self.layout)
             return
@@ -185,7 +185,7 @@ class InfoPanel(ConsoleRenderable):
         self.duration_progress.update(self.duration_task, completed=completed, total=total)
 
         self.layout['other_info'].update(self.create_info_table())
-        yield Panel(self.layout)
+        yield Panel(self.layout, height=options.height)
 
     def update(self, data: Union[ListenWsData, Song]) -> None:
         if isinstance(data, ListenWsData):
@@ -421,7 +421,7 @@ class Main:
         if self.update_counter == 0:
             self.previous_panel = PreviousSongPanel(data.last_played)
         else:
-            self.previous_panel.add(data.song)
+            self.previous_panel.add(data.last_played[0])
 
         self.layout['box'].update(self.previous_panel)
         # current song table
