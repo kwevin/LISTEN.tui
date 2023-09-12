@@ -159,21 +159,24 @@ class InfoPanel(ConsoleRenderable):
         self.separator = Config.get_config().display.separator
         self.duration_progress = Progress(BarColumn(bar_width=None), MofNTimeCompleteColumn())
         self.duration_task = self.duration_progress.add_task('Duration', total=None)
-        self.ws_data = websocket.data
-        self.current_song = self.create_song_table(self.ws_data.song, self.ws_data.requester)
         self.ws = websocket
         self.player = player
-        self.player.on_data_update(self.update)
-        self.song_delay = self.calc_delay(self.player.data, self.ws_data)
+        self.player.on_data_update(self.calc_delay)
+        self.current_song: Table
+        self.ws_data: ListenWsData
         self.start_time = time.time()
+        self.song_delay = 0
         self.layout = Layout()
         self.layout.split_row(
-            Layout(self.current_song, name='main_table', minimum_size=14, ratio=8),
-            Layout(self.create_info_table(), name='other_info', minimum_size=4, ratio=2)
+            Layout(name='main_table', minimum_size=14, ratio=8),
+            Layout(name='other_info', minimum_size=4, ratio=2)
         )
         pass
 
     def __rich_console__(self, _: Console, __: ConsoleOptions) -> RenderResult:
+        if not self.current_song or not self.ws_data:
+            yield Panel(self.layout)
+            return
         if self.ws_data.song.duration:
             completed = (datetime.now(timezone.utc) - self.ws_data.start_time).total_seconds()
         else:
@@ -184,14 +187,14 @@ class InfoPanel(ConsoleRenderable):
         self.layout['other_info'].update(self.create_info_table())
         yield Panel(self.layout)
 
-    def update(self, data: Union[ListenWsData, MPVData, Song]) -> None:
-        if isinstance(data, MPVData):
-            self.song_delay = self.calc_delay(data, self.ws_data)
-        elif isinstance(data, Song):
-            self.current_song = self.create_song_table(data, self.ws_data.requester)
-        else:
+    def update(self, data: Union[ListenWsData, Song]) -> None:
+        if isinstance(data, ListenWsData):
+            self.ws_data = data
             self.current_song = self.create_song_table(data.song, data.requester)
-            self.song_delay = self.calc_delay(self.player.data, data)
+            self.layout['main_table'].update(self.current_song)
+        else:
+            self.current_song = self.create_song_table(data, self.ws_data.requester)
+            self.layout['main_table'].update(self.current_song)
 
     def create_song_table(self, song: Song, requester: Optional[Requester] = None) -> Table:
         table = Table(expand=True, show_header=False)
@@ -248,19 +251,21 @@ class InfoPanel(ConsoleRenderable):
 
         return table
 
-    def calc_delay(self, player_data: MPVData, ws_data: ListenWsData) -> str:
-        ws_start = ws_data.start_time
-        ws_song = ws_data.song.title
-        audio_start = player_data.start
-        audio_song = player_data.title
+    def calc_delay(self, data: MPVData) -> None:
+        ws_start = self.ws_data.start_time
+        ws_song = self.ws_data.song.title
+        audio_start = data.start
+        audio_song = data.title
         if ws_song and audio_song:
             if ws_song not in audio_song:
-                return "???"
+                self.song_delay = '???'
+                return
         else:
-            return "???"
+            self.song_delay = '???'
+            return
 
         diff = audio_start - ws_start
-        return f'{diff.total_seconds():.2f}'
+        self.song_delay = f'{diff.total_seconds():.2f}'
 
 
 class MofNTimeCompleteColumn(MofNCompleteColumn):
@@ -371,6 +376,8 @@ class Main:
             self.ws.on_data_update(self.rpc.update)
             self.running_modules.append(self.rpc)
 
+        self.info_panel = InfoPanel(self.player, self.ws)
+
         for modules in self.running_modules:
             modules.start()
 
@@ -415,7 +422,7 @@ class Main:
             self.previous_panel = PreviousSongPanel(data.last_played)
         else:
             self.previous_panel.add(data.song)
-            
+
         self.layout['box'].update(self.previous_panel)
         # current song table
         self.current_song = data.song
@@ -478,7 +485,6 @@ class Main:
                 live.update(init())
                 time.sleep(0.1)
 
-        self.info_panel = InfoPanel(self.player, self.ws)
         self.layout['heading'].update(self.heading())
         self.layout['main'].update(self.info_panel)
         if self.listen.current_user:
