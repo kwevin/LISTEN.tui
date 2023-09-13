@@ -24,7 +24,7 @@ from rich.text import Text
 from .config import Config
 from .listen.client import Listen
 from .listen.stream import StreamPlayerMPV
-from .listen.types import CurrentUser, ListenWsData, MPVData, Requester, Song
+from .listen.types import ListenWsData, MPVData, Requester, Song
 from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
@@ -49,12 +49,11 @@ class TerminalPanel(ConsoleRenderable):
 
 
 class PreviousSongPanel(ConsoleRenderable):
-    def __init__(self, songs: list[Song]):
+    def __init__(self):
         self.romaji_first = Config.get_config().display.romaji_first
         self.separator = Config.get_config().display.separator
         self.songs_table: list[Table] = []
-        for song in songs:
-            self.songs_table.append(self.create_song_table(song))
+        self.update_counter = 0
 
     def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
         height = options.max_height
@@ -76,6 +75,15 @@ class PreviousSongPanel(ConsoleRenderable):
             height=height,
             # subtitle=f'{current_height}/{total_height}={total_rendered}'
         )
+
+    def update(self, data: ListenWsData) -> None:
+        if self.update_counter == 0:
+            for song in data.last_played:
+                self.songs_table.append(self.create_song_table(song))
+        else:
+            self.songs_table.insert(0, self.create_song_table(data.last_played[0]))
+
+        self.update_counter += 1
 
     def add(self, song: Song) -> None:
         self.songs_table.insert(0, self.create_song_table(song))
@@ -101,11 +109,14 @@ class PreviousSongPanel(ConsoleRenderable):
 
 
 class UserPanel(ConsoleRenderable):
-    def __init__(self, user: CurrentUser) -> None:
+    def __init__(self, listen: Listen) -> None:
         self.conf = Config.get_config().display
-        self.user = user
+        self.listen = listen
+        self.user = listen.current_user
 
     def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
+        if not self.user:
+            return
         width = options.max_width
         height = options.max_height
         layout = Layout(size=4)
@@ -151,6 +162,10 @@ class UserPanel(ConsoleRenderable):
             height=height,
             # subtitle=f'{current_height}/{total_height}={total_rendered}'
         )
+
+    @threaded
+    def update(self) -> None:
+        self.user = self.listen.update_current_user()
 
 
 class InfoPanel(ConsoleRenderable):
@@ -268,6 +283,18 @@ class InfoPanel(ConsoleRenderable):
         self.song_delay = f'{diff.total_seconds():.2f}'
 
 
+class HeadingPanel(ConsoleRenderable):
+    def __init__(self) -> None:
+        self.listener = 0
+        pass
+
+    def __rich_console__(self, _: Console, __: ConsoleOptions) -> RenderResult:
+        yield Panel(Text(f'Listen.Moe (󰋋 {self.listener})', justify='center'))
+
+    def update(self, data: ListenWsData) -> None:
+        self.listener = data.listener
+
+
 class MofNTimeCompleteColumn(MofNCompleteColumn):
     def render(self, task: "Task") -> Text:
         """Show 00:01/04:28"""
@@ -345,8 +372,8 @@ class Main:
         self.log = logging.getLogger(__name__)
         self.running_modules: list[BaseModule] = []
         self.start_time: float = time.time()
-        self.update_counter: int = 0
         self.logged_in: bool = False
+        self.terminal: bool = False
 
         self.ws: ListenWebsocket
         self.player: StreamPlayerMPV
@@ -376,7 +403,12 @@ class Main:
             self.ws.on_data_update(self.rpc.update)
             self.running_modules.append(self.rpc)
 
+        self.heading_panel = HeadingPanel()
+        self.ws.on_data_update(self.heading_panel.update)
         self.info_panel = InfoPanel(self.player, self.ws)
+        self.previous_panel = PreviousSongPanel()
+        self.ws.on_data_update(self.previous_panel.update)
+        self.user_panel = UserPanel(self.listen)
 
         for modules in self.running_modules:
             modules.start()
@@ -408,22 +440,23 @@ class Main:
     def free_instance_lock(self) -> None:
         os.remove(Path().resolve().joinpath('_instance.lock'))
 
+    def toggle_terminal(self) -> None:
+        if self.terminal:
+            self.layout['box'].update(self.previous_panel)
+        else:
+            self.layout['box'].update(Panel(Text()))
+
+        self.terminal = not self.terminal
+
     def favorite_song(self) -> None:
         if not self.logged_in:
             return
         self.current_song.is_favorited = not self.current_song.is_favorited
-        self.info_panel.update(self.current_song)
         Thread(target=self.listen.favorite_song, args=(self.current_song.id, )).start()
-        self.update_user_table()
+        self.info_panel.update(self.current_song)
+        self.user_panel.update()
 
     def update(self, data: ListenWsData) -> None:
-        # previous songs
-        if self.update_counter == 0:
-            self.previous_panel = PreviousSongPanel(data.last_played)
-        else:
-            self.previous_panel.add(data.last_played[0])
-
-        self.layout['box'].update(self.previous_panel)
         # current song table
         self.current_song = data.song
         self.info_panel.update(data)
@@ -432,40 +465,22 @@ class Main:
         if self.current_song.is_favorited:
             self.info_panel.update(self.current_song)
 
-        # tui heading
-        self.layout['heading'].update(self.heading())
-
-        self.update_counter += 1
-
-    @threaded
-    def update_user_table(self) -> None:
-        user = self.listen.update_current_user()
-        if user:
-            self.layout['user'].update(UserPanel(user))
-
-    def heading(self) -> Panel:
-        return Panel(Text(f'Listen.Moe (󰋋 {self.ws.data.listener})', justify='center'))
-
     def login(self):
         username = self.config.system.username
         password = self.config.system.password
         token = self.config.persist.token
 
         with self.console.status("Logging in...", spinner='dots'):
-            if not token:
-                if not username or not password:
-                    self.listen = Listen()
-                else:
-                    self.listen = Listen.login(username, password)
-                    self.logged_in = True
-                if self.listen.current_user:
-                    self.config.update('persist', 'token', self.listen.current_user.token)
+            if not username and not password:
+                self.listen = Listen()
             else:
-                if not username or not password:
-                    self.listen = Listen()
+                if not token:
+                    self.listen = Listen.login(username, password)
                 else:
                     self.listen = Listen.login(username, password, token)
-                    self.logged_in = True
+                self.logged_in = True
+                if self.listen.current_user:
+                    self.config.update('persist', 'token', self.listen.current_user.token)
 
     def run(self):
         self.login()
@@ -485,11 +500,12 @@ class Main:
                 live.update(init())
                 time.sleep(0.1)
 
-        self.layout['heading'].update(self.heading())
+        self.layout['heading'].update(self.heading_panel)
         self.layout['main'].update(self.info_panel)
+        self.layout['box'].update(self.previous_panel)
         if self.listen.current_user:
             self.layout['user'].visible = True
-            self.layout['user'].update(UserPanel(self.listen.current_user))
+            self.layout['user'].update(self.user_panel)
 
         refresh_per_second = 30
         with Live(self.layout, refresh_per_second=refresh_per_second, screen=True) as self.live:
