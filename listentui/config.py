@@ -33,7 +33,6 @@ class Keybind:
     raise_volume_fine: str = '${RIGHT}'
     favourite_song: str = 'f'
     restart_player: str = 'r'
-    seek_to_end: str = 's'
     toggle_terminal: str = 'i'
 
     def sub_identifier(self) -> Self:

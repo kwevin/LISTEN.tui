@@ -3,6 +3,10 @@ from datetime import datetime, timezone
 from time import time
 from typing import Any, Literal, NewType, Optional, Self, Type
 
+from rich.console import Console, ConsoleOptions, RenderResult
+from rich.table import Table
+from rich.text import Text
+
 AlbumID = NewType('AlbumID', int)
 ArtistID = NewType('ArtistID', int)
 CharacterID = NewType('CharacterID', int)
@@ -40,6 +44,14 @@ class Link:
 
         return cls(name=value, url=url)
 
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("name", Text(self.name))
+        table.add_row("url", Text(self.url))
+        yield table
+
 
 @dataclass
 class User:
@@ -73,6 +85,20 @@ class Album:
     def __post_init__(self):
         self.link = f'https://listen.moe/albums/{self.id}'
 
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("id", Text(str(self.id)))
+        if self.name:
+            table.add_row("name", Text(self.name))
+        if self.name_romaji:
+            table.add_row("name_romaji", Text(self.name_romaji))
+        if self.image:
+            table.add_row("image", self.image)
+        table.add_row("link", Text(self.link))
+        yield table
+
 
 @dataclass
 class Artist:
@@ -86,6 +112,23 @@ class Artist:
     def __post_init__(self):
         self.link = f'https://listen.moe/artists/{self.id}'
 
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("id", Text(str(self.id)))
+        if self.name:
+            table.add_row("name", Text(self.name))
+        if self.name_romaji:
+            table.add_row("name_romaji", Text(self.name_romaji))
+        if self.image:
+            table.add_row("image", self.image)
+        if self.character:
+            for character in self.character:
+                table.add_row("character", character)
+        table.add_row("link", Text(self.link))
+        yield table
+
 
 @dataclass
 class Character:
@@ -96,6 +139,18 @@ class Character:
 
     def __post_init__(self):
         self.link = f'https://listen.moe/characters/{self.id}'
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("id", Text(str(self.id)))
+        if self.name:
+            table.add_row("name", Text(self.name))
+        if self.name_romaji:
+            table.add_row("name_romaji", Text(self.name_romaji))
+        table.add_row("link", Text(self.link))
+        yield table
 
 
 @dataclass
@@ -108,6 +163,18 @@ class Source:
 
     def __post_init__(self):
         self.link = f'https://listen.moe/sources/{self.id}'
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("id", Text(str(self.id)))
+        if self.name:
+            table.add_row("name", Text(self.name))
+        if self.name_romaji:
+            table.add_row("name_romaji", Text(self.name_romaji))
+        table.add_row("link", Text(self.link))
+        yield table
 
 
 @dataclass
@@ -141,9 +208,9 @@ class Song:
             'duration': duration,
             'time_end': round(time() + duration) if duration else round(time()),
             'title': Song._get_title(data),
-            'sources': Song._get_sources(data),
+            'source': Song._get_sources(data),
             'artists': Song._get_artists(data),
-            'albums': Song._get_albums(data),
+            'album': Song._get_albums(data),
             'characters': Song._get_characters(data),
         }
         if (p := data.get('played', None)):
@@ -167,17 +234,17 @@ class Song:
         return title
 
     @staticmethod
-    def _get_sources(song: dict[str, Any]) -> list[Source] | None:
+    def _get_sources(song: dict[str, Any]) -> Source | None:
         sources = song.get('sources')
         if not sources:
             return None
-
-        return [Source(
+        source = sources[0]
+        return Source(
             id=source['id'],
             name=Song._sanitise(source.get('name')),
             name_romaji=source.get('nameRomaji'),
             image=Link.from_name('sources', source.get('image'))
-        ) for source in sources]
+        )
 
     @staticmethod
     def _get_artists(song: dict[str, Any]) -> list[Artist] | None:
@@ -190,21 +257,25 @@ class Song:
             name_romaji=Song._sanitise(artist.get('nameRomaji')),
             image=Link.from_name('artists', artist.get('image')),
             character=[
-                Character(character['id']) for character in artist.get('characters')
+                Character(character['id'],
+                          name=Song._sanitise(character.get('name')),
+                          name_romaji=Song._sanitise(character.get('nameRomaji'))
+                          ) for character in artist.get('characters')
             ] if len(artist.get('characters')) != 0 else None
         ) for artist in artists]
 
     @staticmethod
-    def _get_albums(song: dict[str, Any]) -> list[Album] | None:
+    def _get_albums(song: dict[str, Any]) -> Album | None:
         albums = song.get('albums')
         if not albums:
             return None
-        return [Album(
+        album = albums[0]
+        return Album(
             id=album['id'],
             name=Song._sanitise(album.get('name')),
             name_romaji=Song._sanitise(album.get('nameRomaji')),
             image=Link.from_name('albums', album.get('image'))
-        ) for album in albums]
+        )
 
     @staticmethod
     def _get_characters(song: dict[str, Any]) -> list[Character] | None:
@@ -217,22 +288,7 @@ class Song:
             name_romaji=Song._sanitise(character.get('nameRomaji'))
         ) for character in characters]
 
-    @staticmethod
-    def _list_to_string(lst: list[Artist] | list[Source] | list[Album] | None,
-                        romaji_first: bool = True, sep: str = ', ') -> str | None:
-        if not lst:
-            return None
-        lst_string: list[str] = []
-        for item in lst:
-            if romaji_first:
-                name = item.name_romaji if item.name_romaji else item.name
-            else:
-                name = item.name
-            if name:
-                lst_string.append(name)
-        return f"{sep}".join(lst_string)
-
-    def artists_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
+    def format_artists(self, count: Optional[int] = None, romaji_first: bool = True, sep: str = ', ') -> str | None:
         if not self.artists:
             return None
         name = None
@@ -244,7 +300,10 @@ class Song:
             for character in self.characters:
                 character_map[character.id] = character
 
-        for artist in self.artists:
+        for idx, artist in enumerate(self.artists):
+            if count:
+                if idx + 1 > count:
+                    break
             if romaji_first:
                 name = artist.name_romaji if artist.name_romaji else artist.name
             else:
@@ -265,40 +324,76 @@ class Song:
 
         return f"{sep}".join(lst_string)
 
-    def sources_to_string(self, romaji_first: bool = True, sep: str = ', ') -> str | None:
-        return self._list_to_string(self.sources, romaji_first=romaji_first, sep=sep)
-
-    def albums_to_string(self, romji_first: bool = True, sep: str = ', ') -> str | None:
-        return self._list_to_string(self.albums, romaji_first=romji_first, sep=sep)
-
-    @staticmethod
-    def _get_image(lst: list[Artist] | list[Source] | list[Album] | None, url: bool) -> str | None:
-        if not lst:
+    def artist_image(self) -> str | None:
+        if not self.artists:
             return None
-        for item in lst:
-            if not item.image:
-                break
-            if url:
-                return item.image.url
-            else:
-                return item.image.name
+        if self.artists[0].image:
+            return self.artists[0].image.url
         return None
 
-    def artist_image(self, url: bool = False) -> str | None:
-        return self._get_image(self.artists, url)
+    def format_album(self, romaji_first: bool = True) -> str | None:
+        if not self.album:
+            return None
+        if romaji_first:
+            name = self.album.name_romaji if self.album.name_romaji else self.album.name
+        else:
+            name = self.album.name
+        return name
 
-    def source_image(self, url: bool = False) -> str | None:
-        return self._get_image(self.sources, url)
+    def format_source(self, romaji_first: bool = True) -> str | None:
+        if not self.source:
+            return None
+        if romaji_first:
+            name = self.source.name_romaji if self.source.name_romaji else self.source.name
+        else:
+            name = self.source.name
+        return name
 
-    def album_image(self, url: bool = False) -> str | None:
-        return self._get_image(self.albums, url)
+    def album_image(self):
+        if not self.album:
+            return None
+        if not self.album.image:
+            return None
+        return self.album.image.url
+
+    def source_image(self):
+        if not self.source:
+            return None
+        if not self.source.image:
+            return None
+        return self.source.image.url
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
+        table = Table(show_header=False)
+        table.add_column(ratio=2)
+        table.add_column(ratio=8)
+        table.add_row("id", Text(str(self.id)))
+        if self.title:
+            table.add_row("title", Text(self.title))
+        if self.title_romaji:
+            table.add_row("title_romaji", Text(self.title_romaji))
+        if self.source:
+            table.add_row("source", self.source)
+        if self.artists:
+            for artist in self.artists:
+                table.add_row("artist", artist)
+        if self.characters:
+            for character in self.characters:
+                table.add_row("character", character)
+        if self.album:
+            table.add_row("album", self.album)
+        if self.duration:
+            table.add_row("duration", Text(str(self.duration)))
+        if self.played:
+            table.add_row("time_played", Text(str(self.played)))
+        yield table
 
     id: int
     title: str | None
-    sources: list["Source"] | None
-    artists: list["Artist"] | None
-    characters: list["Character"] | None
-    albums: list["Album"] | None
+    source: Source | None
+    artists: list[Artist] | None
+    characters: list[Character] | None
+    album: Album | None
     duration: int | None
     time_end: int
     played: Optional[int] = None
@@ -350,7 +445,7 @@ class ListenWsData:
     requester: Requester | None
     event: str | None
     start_time: datetime
-    last_played: list["Song"]
+    last_played: list[Song]
     listener: int
 
 
@@ -447,5 +542,3 @@ if __name__ == "__main__":
     data = loop.run_until_complete(get_data())
     e = ListenWsData.from_data(data)  # pyright: ignore[reportGeneralTypeIssues]
     pprint(e)
-    pprint(e.song.sources_to_string())
-    pprint(e.song.artists_to_string())

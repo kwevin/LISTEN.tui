@@ -1,8 +1,11 @@
 import datetime
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from os import mkdir
 from pathlib import Path
+from types import TracebackType
+from typing import Type
 
 
 class Logger(logging.Logger):
@@ -29,8 +32,14 @@ class Logger(logging.Logger):
             handlers=[file_handler],
             datefmt="%H:%M:%S"
         )
+        log = logging.getLogger(__name__)
 
-        log = logging.getLogger("Listen_CLI")
+        def exception_handler(exc_type: Type[BaseException],
+                              exc_value: BaseException,
+                              trace: TracebackType):
+            log.error("Uncaught Exception", exc_info=(exc_type, exc_value, trace))
+        sys.excepthook = exception_handler
+
         log.info('\n')
         log.info("========== Listen RPC ==========")
         log.info(f"Started at {datetime.datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}")

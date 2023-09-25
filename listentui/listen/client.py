@@ -57,7 +57,7 @@ class Queries:
 
 class BaseClient:
     _ENDPOINT = 'https://listen.moe/graphql'
-    _SYSTEM_COUNT = 5
+    _SYSTEM_COUNT = 10
     _SYSTEM_OFFSET = 0
 
     @staticmethod

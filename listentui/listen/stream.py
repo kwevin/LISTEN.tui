@@ -2,7 +2,7 @@
 import threading
 import time
 from logging import DEBUG, INFO, WARN
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import mpv
 from rich.pretty import pretty_repr
@@ -55,12 +55,14 @@ class StreamPlayerMPV(BaseModule):
         self.mpv_options = self.config.player.mpv_options.copy()
         self.mpv_options['volume'] = self.config.persist.last_volume
         self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
-        self._data: MPVData
+        self._data: Optional[MPVData] = None
         self.idle_count: int = 0
         self.update_able: list[Callable[[MPVData], Any]] = []
 
     @property
-    def data(self) -> MPVData:
+    def data(self) -> MPVData | None:
+        if not self._data:
+            return None
         return self._data
 
     @property
@@ -150,12 +152,12 @@ class StreamPlayerMPV(BaseModule):
             if new_value:
                 self._data = MPVData.from_metadata(new_value)
                 self._log.debug(f'New Metadata: {pretty_repr(self._data)}')
-
                 for method in self.update_able:
                     threading.Thread(target=method,
                                      args=(self._data,),
                                      name='metadata_updater').start()
         self.player.observe_property('metadata', metadata)
+
         cond: Callable[..., Any] = lambda val: True if val else False
         self.player.wait_for_property('metadata', cond=cond)
         self.player.wait_until_playing()
@@ -179,7 +181,6 @@ class StreamPlayerMPV(BaseModule):
     def play_pause(self):
         if self.paused:
             self.play()
-            self.seek_to_end()
         else:
             self.pause()
 
@@ -191,17 +192,6 @@ class StreamPlayerMPV(BaseModule):
             self.volume = 0
             return
         self.volume -= vol
-
-    def seek_to_end(self):
-        if self.cache:
-            pause_wait = self.config.player.mpv_options.get('cache_pause_wait', None)
-            if pause_wait:
-                seek = self.cache.cache_duration - pause_wait
-            else:
-                seek = self.cache.cache_duration
-        else:
-            return
-        self.player.seek(seek)
 
     def set_volume(self, volume: int):
         self.volume = volume

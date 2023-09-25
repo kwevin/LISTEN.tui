@@ -151,9 +151,9 @@ class DiscordRichPresence(BaseModule):
         fallback: str = self.config.fallback
         use_artist: bool = self.config.use_artist
 
-        image = self.song.album_image(url=True)
+        image = self.song.album_image()
         if not image and use_artist:
-            image = self.song.artist_image(url=True)
+            image = self.song.artist_image()
             if not image:
                 return fallback if use_fallback else None
             return image
@@ -171,7 +171,7 @@ class DiscordRichPresence(BaseModule):
         use_artist = self.config.show_small_image
         if not use_artist:
             return None
-        return self.song.artist_image(url=True)
+        return self.song.artist_image()
 
     async def get_small_text(self) -> str | None:
         small_text = Template(self.config.small_text).substitute(self.song_dict)
@@ -183,18 +183,18 @@ class DiscordRichPresence(BaseModule):
         return [{"label": "Join radio", "url": "https://listen.moe/"}]
 
     async def create_dict(self, song: Song) -> dict[str, Any]:
-        source_string = song.sources_to_string(self.romaji_first, self.separator)
+        source_string = song.format_source(self.romaji_first)
         if source_string:
             source_string = f'[{source_string}]'
         song_dict = {
             "id": song.id,
             "title": song.title,
             "source": source_string,
-            "source_image": song.source_image(url=True),
-            "artist": song.artists_to_string(self.romaji_first, self.separator),
-            "artist_image": song.artist_image(url=True),
-            "album": song.albums_to_string(self.romaji_first, self.separator),
-            "album_image": song.album_image(url=True)
+            "source_image": song.source_image(),
+            "artist": song.format_artists(romaji_first=self.romaji_first, sep=self.separator),
+            "artist_image": song.artist_image(),
+            "album": song.format_album(self.romaji_first),
+            "album_image": song.album_image()
         }
         for k, v in song_dict.items():
             if not v:

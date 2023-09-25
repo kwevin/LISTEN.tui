@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 from datetime import datetime, timezone
+from threading import Thread
 from typing import Any, Callable
 
 import websockets.client as websockets
@@ -34,7 +35,7 @@ class ListenWebsocket(BaseModule):
 
     async def update_update_able(self) -> None:
         for method in self.update_able:
-            method(self._data)
+            Thread(target=method, args=(self._data, )).start()
 
     def run(self) -> None:
         while self._running:

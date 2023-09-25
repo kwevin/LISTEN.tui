@@ -11,7 +11,6 @@ lower_volume_fine = "${LEFT}"
 raise_volume_fine = "${RIGHT}"
 favourite_song = "f"
 restart_player = "r"
-seek_to_end = "s"
 toggle_terminal = "i"
 
 [display]
