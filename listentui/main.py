@@ -28,8 +28,8 @@ from rich.text import Text
 from .config import Config
 from .listen.client import Listen
 from .listen.stream import StreamPlayerMPV
-from .listen.types import (Album, Artist, Character, ListenWsData, MPVData,
-                           Requester, Song, User)
+from .listen.types import (Album, Artist, Character, Event, ListenWsData,
+                           MPVData, Requester, Song, User)
 from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
@@ -331,17 +331,64 @@ class TerminalPanel(ConsoleRenderable):
             else:
                 self.console_out.append(("character", self.tablelate("Current song have no source")))
                 return
-        res = self.main.listen.song(source_id)
+        res = self.main.listen.source(source_id)
         if not res:
             self.console_out.append((f"source {source_id}", self.tablelate("No source found")))
         else:
             self.console_out.append((f"source {source_id}", self.tablelate(res)))
 
     def check_favorite(self, args: Namespace):
-        ...
+        if args.id:
+            song_id = args.id
+        else:
+            song_id = self.main.current_song.id
+            status = self.main.current_song.is_favorited
+            self.console_out.append(("check_favorite",
+                                     self.tablelate(f"song {song_id}: {status}")))
+            return
+        res = self.main.listen.check_favorite(song_id)
+        if not res:
+            self.console_out.append((f"check_favorite {song_id}", self.tablelate("No song found")))
+        else:
+            self.console_out.append((f"check_favorite {song_id}", self.tablelate(f"song {song_id}: {res}")))
 
     def favorite(self, args: Namespace):
-        ...
+        romaji_first = self.main.config.display.romaji_first
+        sep = self.main.config.display.separator
+
+        if args.id:
+            song_id = args.id
+        else:
+            self.main.favorite_song()
+            status = self.main.current_song.is_favorited
+            song_id = self.main.current_song.id
+            if romaji_first:
+                title = self.main.current_song.title_romaji or self.main.current_song.title
+            else:
+                title = self.main.current_song.title
+            artist = self.main.current_song.format_artists(0, romaji_first=romaji_first, sep=sep)
+            if status:
+                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Favoriting {title} by {artist}")))
+            else:
+                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+            return
+
+        song = self.main.listen.song(song_id)
+        if not song:
+            self.console_out.append((f"favorite {song_id}", self.tablelate("No song found")))
+        else:
+            if romaji_first:
+                title = song.title_romaji or song.title
+            else:
+                title = song.title
+            artist = song.format_artists(0, romaji_first=romaji_first, sep=sep)
+            status = self.main.listen.check_favorite(song_id)
+            if not status:
+                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Favoriting {title} by {artist}")))
+            else:
+                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+            Thread(self.main.listen.favorite_song, args=(song_id, )).start()
+            self.main.user_panel.update()
 
     @threaded
     def download(self, args: Namespace):
@@ -485,6 +532,8 @@ class InfoPanel(ConsoleRenderable):
             Layout(name='main_table', minimum_size=14, ratio=8),
             Layout(name='other_info', minimum_size=4, ratio=2)
         )
+        self.panel_color = "none"
+        self.panel_title = None
         pass
 
     def __rich_console__(self, _: Console, options: ConsoleOptions) -> RenderResult:
@@ -499,12 +548,24 @@ class InfoPanel(ConsoleRenderable):
         self.duration_progress.update(self.duration_task, completed=completed, total=total)
 
         self.layout['other_info'].update(self.create_info_table())
-        yield Panel(self.layout, height=options.height)
+        yield Panel(self.layout, height=options.height, title=self.panel_title, border_style=self.panel_color)
 
     def update(self, data: ListenWsData) -> None:
         self.ws_data = data
         self.current_song = self.create_song_table(data.song, data.requester)
         self.layout['main_table'].update(self.current_song)
+        if self.ws_data.event:
+            self.update_panel(self.ws_data.event)
+        else:
+            self.reset_panel()
+
+    def update_panel(self, event: Event):
+        self.panel_title = f"♫♪.ılılıll {event.name} llılılı.♫♪"
+        self.panel_color = '#f92672'
+
+    def reset_panel(self):
+        self.panel_title = None
+        self.panel_color = "none"
 
     def update_song(self, song: Song) -> None:
         if not self.ws_data:

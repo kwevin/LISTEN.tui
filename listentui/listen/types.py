@@ -199,6 +199,27 @@ class Requester:
 
 
 @dataclass
+class Event:
+    id: str
+    name: str
+    slug: str
+    image: str
+    presence: Optional[str] = None
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
+        if not data:
+            return None
+        return cls(
+            id=data['id'],
+            name=data['name'],
+            slug=data['slug'],
+            image=data['image'],
+            presence=data['presence']
+        )
+
+
+@dataclass
 class Song:
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
@@ -434,7 +455,7 @@ class ListenWsData:
             start_time=datetime.fromisoformat(data['d']['startTime']),
             listener=data['d']['listeners'],
             requester=Requester.from_data(data['d'].get('requester')),
-            event=data['d'].get('event'),
+            event=Event.from_data(data['d'].get('event')),
             song=Song.from_data(data['d']['song']),
             last_played=[Song.from_data(song) for song in data['d']['lastPlayed']]
         )
@@ -443,10 +464,10 @@ class ListenWsData:
     _t: str
     song: Song
     requester: Requester | None
-    event: str | None
     start_time: datetime
     last_played: list[Song]
     listener: int
+    event: Optional[Event] = None
 
 
 @dataclass
