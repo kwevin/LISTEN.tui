@@ -253,7 +253,7 @@ class TerminalPanel(ConsoleRenderable):
     def eval(self, args: Namespace):
         cmd = args.expr
         try:
-            res = eval("".join(cmd))
+            res = pretty_repr(eval("".join(cmd)))
         except Exception as e:
             res = pretty_repr(e)
         self.console_out.append((f"eval {''.join(cmd)}", self.tablelate(res)))

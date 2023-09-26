@@ -25,10 +25,14 @@
 ```diff
 [Features]
 + Rich Presence customisation
++ Integrated Terminal
 
 [System Changes]
 + Token validation
-
++ Event now work
++ Raised user feed limit to 10 (from 5)
++ User feed will now only display the first artist per song
+- Remove `seek_to_end` due to technical difficulty and it not functioning as intended
 ```
 
 # Installation
@@ -80,7 +84,6 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `raise_volume_fine`: raise the volume by 1
 - `favourite_song`: favourite the current playing song (only when logged in)
 - `restart_player`: restart the player
-- `seek_to_end`: seek to the end of the cached (if any) track
 
 #### Display
 
