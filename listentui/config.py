@@ -33,7 +33,7 @@ class Keybind:
     raise_volume_fine: str = '${RIGHT}'
     favourite_song: str = 'f'
     restart_player: str = 'r'
-    toggle_terminal: str = 'i'
+    open_terminal: str = 'i'
 
     def sub_identifier(self) -> Self:
         s = {k: v for k, v in key.__dict__.items() if "__" not in k}

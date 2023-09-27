@@ -309,7 +309,9 @@ class Song:
             name_romaji=Song._sanitise(character.get('nameRomaji'))
         ) for character in characters]
 
-    def format_artists(self, count: Optional[int] = None, romaji_first: bool = True, sep: str = ', ') -> str | None:
+    def format_artists(self, count: Optional[int] = None,
+                       show_character: bool = True,
+                       romaji_first: bool = True, sep: str = ', ') -> str | None:
         if not self.artists:
             return None
         name = None
@@ -330,7 +332,7 @@ class Song:
             else:
                 name = artist.name
 
-            if self.characters and artist.character:
+            if self.characters and artist.character and show_character:
                 for character in artist.character:
                     if (char := character_map.get(character.id)):
                         if romaji_first:

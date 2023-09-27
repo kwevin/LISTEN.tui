@@ -94,48 +94,70 @@ class TerminalPanel(ConsoleRenderable):
         parser = ArgumentParser(prog="", exit_on_error=False, add_help=False)
         subparser = parser.add_subparsers()
 
-        help = subparser.add_parser('help', help="Print help for given command", add_help=False)
-        help.add_argument('cmd', nargs="?", help="A command", metavar="commmand", type=str)
+        help = subparser.add_parser('help',
+                                    help="Print help for given command",
+                                    add_help=False)
+        help.add_argument('cmd', nargs="?",
+                          help="A command",
+                          metavar="commmand", type=str)
         help.set_defaults(func=self.help)
 
-        clear = subparser.add_parser('clear', help="Clear the console output", add_help=False)
+        clear = subparser.add_parser('clear',
+                                     help="Clear the console output",
+                                     add_help=False)
         clear.set_defaults(func=self.clear)
 
-        eval = subparser.add_parser('eval', help="Evaluate a python expression", add_help=False)
-        eval.add_argument('expr', nargs="+", help="A python expression", metavar="expression")
+        eval = subparser.add_parser('eval',
+                                    help="Evaluate a python expression",
+                                    add_help=False)
+        eval.add_argument('expr', nargs="+",
+                          help="A python expression",
+                          metavar="expression")
         eval.set_defaults(func=self.eval)
 
-        album = subparser.add_parser('album', help="Fetch info on an album", add_help=False)
+        album = subparser.add_parser('album',
+                                     help="Fetch info on an album",
+                                     add_help=False)
         album.add_argument("id", nargs="?",
                            help="(optional), default to current song album",
                            metavar="AlbumID", type=int)
         album.set_defaults(func=self.album)
 
-        artist = subparser.add_parser('artist', help="Fetch info on an artist", add_help=False)
+        artist = subparser.add_parser('artist',
+                                      help="Fetch info on an artist",
+                                      add_help=False)
         artist.add_argument("id", nargs="?",
                             help="(optional), default to current song first artist",
                             metavar="AlbumID", type=int)
         artist.set_defaults(func=self.artist)
 
-        song = subparser.add_parser('song', help="Fetch info on a song", add_help=False)
+        song = subparser.add_parser('song',
+                                    help="Fetch info on a song",
+                                    add_help=False)
         song.add_argument("id", nargs="?",
                           help="(optional), default to current song album",
                           metavar="SongID", type=int)
         song.set_defaults(func=self.song)
 
-        user = subparser.add_parser('user', help="Fetch info on an user", add_help=False)
+        user = subparser.add_parser('user',
+                                    help="Fetch info on an user",
+                                    add_help=False)
         user.add_argument('Username',
                           help="the username of the user",
                           metavar="Username", type=str)
         user.set_defaults(func=self.user)
 
-        character = subparser.add_parser('character', help="Fetch info on a character", add_help=False)
+        character = subparser.add_parser('character',
+                                         help="Fetch info on a character",
+                                         add_help=False)
         character.add_argument("id", nargs="?",
                                help="(optional), default to current song first character",
                                metavar="CharacterID", type=int)
         character.set_defaults(func=self.character)
 
-        source = subparser.add_parser('source', help="Fetch info on a source", add_help=False)
+        source = subparser.add_parser('source',
+                                      help="Fetch info on a source",
+                                      add_help=False)
         source.add_argument("id", nargs="?",
                             help="(optional), default to current song source",
                             metavar="SourceID", type=int)
@@ -143,6 +165,7 @@ class TerminalPanel(ConsoleRenderable):
 
         if self.main.logged_in:
             check_f = subparser.add_parser('check_favorite',
+                                           aliases=['cf', 'check'],
                                            help="check if the song has been favorited",
                                            add_help=False
                                            )
@@ -151,13 +174,18 @@ class TerminalPanel(ConsoleRenderable):
                                  metavar="SongID", type=int)
             check_f.set_defaults(func=self.check_favorite)
 
-            fav = subparser.add_parser('favorite', help="Favorite a song", add_help=False)
+            fav = subparser.add_parser('favorite',
+                                       aliases=['f'],
+                                       help="Favorite a song",
+                                       add_help=False)
             fav.add_argument("id", nargs="?",
                              help="(optional), default to current song",
                              metavar="SongID", type=int)
             fav.set_defaults(func=self.favorite)
 
-        download = subparser.add_parser('download', help="Download a song", add_help=False)
+        download = subparser.add_parser('download',
+                                        help="Download a song",
+                                        add_help=False)
         download.add_argument("id", nargs="?",
                               help="(optional), default to current playing song",
                               metavar="songID", type=int)
@@ -165,9 +193,9 @@ class TerminalPanel(ConsoleRenderable):
         return (parser, subparser)
 
     def ensure_cursor(self) -> None:
-        lower_bound = self.max_scroll_height - self.height
-        if self.scroll_offset < lower_bound:
-            self.scroll_offset = lower_bound + 4
+        lower_bound = self.max_scroll_height - self.height - 2
+        if self.scroll_offset < lower_bound + 6:
+            self.scroll_offset = lower_bound + 5
 
     def read(self, k: str) -> None:
         if k == key.ENTER:
@@ -193,15 +221,25 @@ class TerminalPanel(ConsoleRenderable):
         self.buffer.append(k)
 
     def execute_buffer(self) -> None:
+        command = "".join(self.buffer)
+        # https://github.com/python/cpython/issues/103498
+        if command.startswith('eval'):
+            args = command.split()
+            if len(args) == 1:
+                self.console_out.append((command, self.tablelate("Requires argument: expression")))
+                self.buffer.clear()
+                return
         try:
             if len(self.buffer) == 0:
                 return
-            args, others = self.parser.parse_known_args("".join(self.buffer).split())
+            args, others = self.parser.parse_known_args(command.split())
             if len(others) > 0:
-                self.console_out.append(("".join(self.buffer), self.tablelate(f"Invalid argument: {others[0]}")))
-            args.func(args)
+                self.console_out.append((command, self.tablelate(f"Unknown argument: {' '.join(others)}")))
+                self.buffer.clear()
+                return
+            args.func(command, args)
         except ArgumentError:
-            self.console_out.append(("".join(self.buffer), self.tablelate(f"Unknown command: {''.join(self.buffer)}")))
+            self.console_out.append((command, self.tablelate(f"Unknown command: {command}")))
         self.buffer.clear()
 
     def render_out(self) -> Table:
@@ -237,122 +275,122 @@ class TerminalPanel(ConsoleRenderable):
             table.add_row(data)
         return table
 
-    def help(self, args: Namespace):
+    def help(self, command: str, args: Namespace):
         if not args.cmd:
-            self.console_out.append(("help", self.tablelate(self.parser.format_help())))
+            self.console_out.append((command, self.tablelate(self.parser.format_help())))
         else:
             subcmd = self.subparser.choices.get(args.cmd)
             if not subcmd:
-                self.console_out.append((f"help {args.cmd}", self.tablelate(f"{args.cmd} is not a valid command")))
+                self.console_out.append((f"{command}", self.tablelate(f"{args.cmd} is not a valid command")))
             else:
-                self.console_out.append((f"help {args.cmd}", self.tablelate(subcmd.format_help())))
+                self.console_out.append((f"{command}", self.tablelate(subcmd.format_help())))
 
-    def clear(self, _: Namespace):
+    def clear(self, _: str, __: Namespace):
         self.scroll_offset = self.max_scroll_height
 
-    def eval(self, args: Namespace):
+    def eval(self, command: str, args: Namespace):
         cmd = args.expr
         try:
-            res = pretty_repr(eval("".join(cmd)))
+            res = pretty_repr(eval(" ".join(cmd)))
         except Exception as e:
             res = pretty_repr(e)
-        self.console_out.append((f"eval {''.join(cmd)}", self.tablelate(res)))
+        self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def album(self, args: Namespace):
+    def album(self, command: str, args: Namespace):
         if args.id:
             album_id = args.id
         else:
             if self.main.current_song.album:
                 album_id = self.main.current_song.album.id
             else:
-                self.console_out.append(("album", self.tablelate("Current song have no album")))
+                self.console_out.append((command, self.tablelate("Current song have no album")))
                 return
         res = self.main.listen.album(album_id)
         if not res:
-            self.console_out.append((f"album {album_id}", self.tablelate("No album found")))
+            self.console_out.append((f"{command}", self.tablelate("No album found")))
         else:
-            self.console_out.append((f"album {album_id}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def artist(self, args: Namespace):
+    def artist(self, command: str, args: Namespace):
         if args.id:
             artist_id = args.id
         else:
             if self.main.current_song.artists:
                 artist_id = self.main.current_song.artists[0].id
             else:
-                self.console_out.append(("album", self.tablelate("Current song have no artist")))
+                self.console_out.append((command, self.tablelate("Current song have no artist")))
                 return
         res = self.main.listen.artist(artist_id)
         if not res:
-            self.console_out.append((f"artist {artist_id}", self.tablelate("No artist found")))
+            self.console_out.append((f"{command}", self.tablelate("No artist found")))
         else:
-            self.console_out.append((f"artist {artist_id}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def song(self, args: Namespace):
+    def song(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
         else:
             song_id = self.main.current_song.id
         res = self.main.listen.song(song_id)
         if not res:
-            self.console_out.append((f"song {song_id}", self.tablelate("No song found")))
+            self.console_out.append((f"{command}", self.tablelate("No song found")))
         else:
-            self.console_out.append((f"song {song_id}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def user(self, args: Namespace):
+    def user(self, command: str, args: Namespace):
         username = args.username
         res = self.main.listen.user(username)
         if not res:
-            self.console_out.append((f"user {username}", self.tablelate("No user found")))
+            self.console_out.append((f"{command}", self.tablelate("No user found")))
         else:
-            self.console_out.append((f"user {username}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def character(self, args: Namespace):
+    def character(self, command: str, args: Namespace):
         if args.id:
             character_id = args.id
         else:
             if self.main.current_song.characters:
                 character_id = self.main.current_song.characters[0].id
             else:
-                self.console_out.append(("character", self.tablelate("Current song have no characters")))
+                self.console_out.append((command, self.tablelate("Current song have no characters")))
                 return
         res = self.main.listen.character(character_id)
         if not res:
-            self.console_out.append((f"character {character_id}", self.tablelate("No character found")))
+            self.console_out.append((f"{command}", self.tablelate("No character found")))
         else:
-            self.console_out.append((f"character {character_id}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def source(self, args: Namespace):
+    def source(self, command: str, args: Namespace):
         if args.id:
             source_id = args.id
         else:
             if self.main.current_song.source:
                 source_id = self.main.current_song.source.id
             else:
-                self.console_out.append(("character", self.tablelate("Current song have no source")))
+                self.console_out.append((command, self.tablelate("Current song have no source")))
                 return
         res = self.main.listen.source(source_id)
         if not res:
-            self.console_out.append((f"source {source_id}", self.tablelate("No source found")))
+            self.console_out.append((f"{command}", self.tablelate("No source found")))
         else:
-            self.console_out.append((f"source {source_id}", self.tablelate(res)))
+            self.console_out.append((f"{command}", self.tablelate(res)))
 
-    def check_favorite(self, args: Namespace):
+    def check_favorite(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
         else:
             song_id = self.main.current_song.id
             status = self.main.current_song.is_favorited
-            self.console_out.append(("check_favorite",
+            self.console_out.append((command,
                                      self.tablelate(f"song {song_id}: {status}")))
             return
         res = self.main.listen.check_favorite(song_id)
         if not res:
-            self.console_out.append((f"check_favorite {song_id}", self.tablelate("No song found")))
+            self.console_out.append((f"{command}", self.tablelate("No song found")))
         else:
-            self.console_out.append((f"check_favorite {song_id}", self.tablelate(f"song {song_id}: {res}")))
+            self.console_out.append((f"{command}", self.tablelate(f"song {song_id}: {res}")))
 
-    def favorite(self, args: Namespace):
+    def favorite(self, command: str, args: Namespace):
         romaji_first = self.main.config.display.romaji_first
         sep = self.main.config.display.separator
 
@@ -368,14 +406,14 @@ class TerminalPanel(ConsoleRenderable):
                 title = self.main.current_song.title
             artist = self.main.current_song.format_artists(0, romaji_first=romaji_first, sep=sep)
             if status:
-                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Favoriting {title} by {artist}")))
+                self.console_out.append((f"{command}", self.tablelate(f"Favoriting {title} by {artist}")))
             else:
-                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+                self.console_out.append((f"{command}", self.tablelate(f"Unfavoriting {title} by {artist}")))
             return
 
         song = self.main.listen.song(song_id)
         if not song:
-            self.console_out.append((f"favorite {song_id}", self.tablelate("No song found")))
+            self.console_out.append((f"{command}", self.tablelate("No song found")))
         else:
             if romaji_first:
                 title = song.title_romaji or song.title
@@ -384,19 +422,19 @@ class TerminalPanel(ConsoleRenderable):
             artist = song.format_artists(0, romaji_first=romaji_first, sep=sep)
             status = self.main.listen.check_favorite(song_id)
             if not status:
-                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Favoriting {title} by {artist}")))
+                self.console_out.append((f"{command}", self.tablelate(f"Favoriting {title} by {artist}")))
             else:
-                self.console_out.append((f"favorite {song_id}", self.tablelate(f"Unfavoriting {title} by {artist}")))
-            Thread(self.main.listen.favorite_song, args=(song_id, )).start()
+                self.console_out.append((f"{command}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+            Thread(target=self.main.listen.favorite_song, args=(song_id, )).start()
             self.main.user_panel.update()
 
     @threaded
-    def download(self, args: Namespace):
+    def download(self, command: str, args: Namespace):
         t = Table.grid()
         e = Progress()
         t.add_row(e)
         k = e.add_task('testing', total=100)
-        self.console_out.append(("download", t))
+        self.console_out.append((command, t))
         while not e.finished:
             e.advance(k)
             time.sleep(0.2)
@@ -444,7 +482,8 @@ class PreviousSongPanel(ConsoleRenderable):
             title.append(" ", Style(color='#f92672', bold=True))
         title.append(song.title or '')
         table.add_row("Title", title)
-        table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first, sep=self.separator))
+        if song.artists:
+            table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first, sep=self.separator))
         if song.source:
             table.add_row("Source", song.format_source(self.romaji_first))
         if song.album:
@@ -491,7 +530,8 @@ class UserPanel(ConsoleRenderable):
             feed_text.append('Favorited ')
             feed_text.append(f'{feed.song.title} ')
             feed_text.append('by ', style='#f92672')
-            feed_text.append(f'{feed.song.format_artists(1, romaji_first=self.romaji_first, sep=self.sep)}')
+            artist = feed.song.format_artists(1, show_character=False, romaji_first=self.romaji_first, sep=self.sep)
+            feed_text.append(f'{artist}')
             current_height += ceil(feed_text.cell_len / width) + 1
             if current_height > total_height:
                 break
@@ -552,15 +592,20 @@ class InfoPanel(ConsoleRenderable):
 
     def update(self, data: ListenWsData) -> None:
         self.ws_data = data
-        self.current_song = self.create_song_table(data.song, data.requester)
+        self.current_song = self.create_song_table(data.song)
         self.layout['main_table'].update(self.current_song)
-        if self.ws_data.event:
-            self.update_panel(self.ws_data.event)
+        if data.event:
+            self.update_panel(data.event)
+        elif data.requester:
+            self.update_panel(data.requester)
         else:
             self.reset_panel()
 
-    def update_panel(self, event: Event):
-        self.panel_title = f"♫♪.ılılıll {event.name} llılılı.♫♪"
+    def update_panel(self, data: Union[Event, Requester]):
+        if isinstance(data, Event):
+            self.panel_title = f"♫♪.ılılıll {data.name} llılılı.♫♪"
+        else:
+            self.panel_title = f"Requested by {data.display_name}"
         self.panel_color = '#f92672'
 
     def reset_panel(self):
@@ -568,14 +613,10 @@ class InfoPanel(ConsoleRenderable):
         self.panel_color = "none"
 
     def update_song(self, song: Song) -> None:
-        if not self.ws_data:
-            requester = None
-        else:
-            requester = self.ws_data.requester
-        self.current_song = self.create_song_table(song, requester)
+        self.current_song = self.create_song_table(song)
         self.layout['main_table'].update(self.current_song)
 
-    def create_song_table(self, song: Song, requester: Optional[Requester] = None) -> Table:
+    def create_song_table(self, song: Song) -> Table:
         table = Table(expand=True, show_header=False)
         table.add_column(ratio=2)
         table.add_column(ratio=8)
@@ -584,10 +625,9 @@ class InfoPanel(ConsoleRenderable):
             title.append(" ", Style(color='#f92672', bold=True))
         title.append(song.title or '')
 
-        if requester:
-            table.add_row("Requested By", requester.display_name)
         table.add_row("Title", title)
-        table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first, sep=self.separator))
+        if song.artists:
+            table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first, sep=self.separator))
         if song.source:
             table.add_row("Source", song.format_source(self.romaji_first))
         if song.album:
@@ -725,7 +765,7 @@ class Main:
                         player.restart()
                     case keybind.play_pause:
                         player.play_pause()
-                    case keybind.toggle_terminal:
+                    case keybind.open_terminal:
                         k = ''
                         term = self.terminal_panel
                         box = self.layout['box']

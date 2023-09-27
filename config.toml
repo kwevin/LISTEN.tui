@@ -11,7 +11,7 @@ lower_volume_fine = "${LEFT}"
 raise_volume_fine = "${RIGHT}"
 favourite_song = "f"
 restart_player = "r"
-toggle_terminal = "i"
+open_terminal = "i"
 
 [display]
 romaji_first = true
