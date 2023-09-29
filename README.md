@@ -35,6 +35,7 @@
 
 
 [System Changes]
++ Config file is now moved to systembased config location, see #configuration for more info
 + Token validation
 + Raised user feed limit to 10 (from 5)
 + User feed will now only display the first artist per song
