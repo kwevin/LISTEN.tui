@@ -137,9 +137,10 @@ class Config:
         if not self.config_file.is_file():
             self._write(self.config_file, self._default())
 
-        self.persist_file = self.config_root.joinpath('.persist\\persist.toml')
-        if not self.persist_file.parent.is_dir():
-            os.mkdir(self.persist_file.parent)
+        persist_folder = self.config_root.joinpath('.persist')
+        self.persist_file = persist_folder.joinpath('persist.toml')
+        if not persist_folder.is_dir():
+            os.mkdir(persist_folder)
             self._write(self.persist_file, asdict(Persist()))
 
         self._load()

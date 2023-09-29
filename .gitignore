@@ -5,6 +5,7 @@ dist
 build
 *.spec
 upx*
+logo.ico
 __pycache__
 devconf.toml
 _instance.lock

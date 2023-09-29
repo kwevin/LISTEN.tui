@@ -19,6 +19,7 @@
   - [Player](#player)
 - [Terminal](#terminal)
 - [Additional Features](#additional-features)
+- [Building](#build)
 
 ---
 
@@ -58,9 +59,10 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 
 #### Linux
 
-1. Download the latest binary from releases
+Hold on, linux needs some time, idk why but a build is 230mb in size
+<!-- 1. Download the latest binary from releases
 2. Move file to $PATH
-3. Run `listentui`
+3. Run `listentui` -->
 
 #### Windows
 
@@ -175,3 +177,19 @@ Mpv supports dynamic range compression (lower the sounds at higher volume and ra
 ```toml
 af = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5" 
 ```
+
+# Build
+
+Requires:
+
+- `python3.11.1^`
+- `poetry`
+
+```sh
+poetry shell
+poetry install
+poetry build
+poetry run python build.py
+```
+
+build files are located in `dist`
