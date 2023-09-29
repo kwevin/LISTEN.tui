@@ -150,7 +150,11 @@ class StreamPlayerMPV(BaseModule):
 
         def metadata(_: Any, new_value: Any):
             if new_value:
-                self._data = MPVData.from_metadata(new_value)
+                data = MPVData.from_metadata(new_value)
+                if self._data:
+                    if self._data.title == data.title:
+                        return
+                self._data = data
                 self._log.debug(f'New Metadata: {pretty_repr(self._data)}')
                 for method in self.update_able:
                     threading.Thread(target=method,
@@ -166,6 +170,24 @@ class StreamPlayerMPV(BaseModule):
 
     def on_data_update(self, method: Callable[[MPVData], Any]):
         self.update_able.append(method)
+
+    def preview(self, url: str, on_play: Callable[..., Any]):
+        base_url = "https://cdn.listen.moe/snippets/"
+        final_url = base_url + url
+        self.pause()
+        player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
+        player.play(final_url)
+        player.wait_until_playing()
+        threading.Thread(target=on_play).start()
+        player.wait_for_playback()
+        self.seek_to_end()
+        self.play()
+
+    def seek_to_end(self):
+        # https://mpv.io/manual/master/#command-interface-seek-%3Ctarget%3E-[%3Cflags%3E]
+        # https://github.com/mpv-player/mpv/issues/6545
+        # honestly, i do not understand what the this does, but it semi work
+        self.player.seek('-4', reference='absolute+keyframes')
 
     def restart(self):
         self.player.play(self.stream_url)

@@ -1,2 +1,0 @@
-poetry run listentui %*
-pause

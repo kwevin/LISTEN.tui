@@ -2,7 +2,7 @@
 
 <div align="center">A listen.moe TUI application</div>
 
-![image of application](.assets/temp.png)
+![image of application](.assets/main.png)
 
 ---
 
@@ -10,13 +10,15 @@
 
 - [New! This Update](#new-features)
 - [Installation](#installation)
+- [Usage Options](#usage-options)
 - [Configuration](#configuration)
   - [System](#system)
   - [Keybind](#keybind)
   - [Display](#display)
   - [Rich Presence](#rich-presence)
   - [Player](#player)
-- [Extra](#extra)
+- [Terminal](#terminal)
+- [Additional Features](#additional-features)
 
 ---
 
@@ -25,14 +27,17 @@
 ```diff
 [Features]
 + Rich Presence customisation
-+ Integrated Terminal
++ Integrated Terminal, more at #terminal
++ Now show ongoing event
++ Song requester now gets more flair
++ Add some optional startup argument, more at #usage-options
+
 
 [System Changes]
 + Token validation
-+ Event now work
 + Raised user feed limit to 10 (from 5)
 + User feed will now only display the first artist per song
-- Remove `seek_to_end` due to technical difficulty and it not functioning as intended
+- Remove `seek_to_end` as a keybind, use `restart_player` instead
 ```
 
 # Installation
@@ -51,21 +56,49 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 
 ## How to run
 
-1. Install [poetry](https://python-poetry.org/docs/#installation)
-2. clone this directory
-3. cd into directory
-4. run `poetry shell`
-5. run `poetry install`
-6. run `poetry run listentui`
+#### Linux
 
-Additional things: <br>
+1. Download the latest binary from releases
+2. Move file to $PATH
+3. Run `listentui`
 
-- Linux: symlink `listentui.sh` to a folder in $PATH
-- Window: make a shortcut of `listentui.cmd`
+#### Windows
+
+1. Download the latest executable from releases
+2. Move file to %PATH%
+3. Run `listentui` in any terminal
+
+Alternatively, double clicking the executable works too (although it will run it under cmd.exe)
+
+#### Universal
+
+1. Download the `listentui*.whl` file
+2. In a terminal, run `pip install` on the whl file
+3. Run `listentui`
+
+# Usage Options
+
+```sh
+listentui [OPTIONS]
+```
+
+## General Options
+
+```txt
+-h, --help        Print this help text and exit
+-c, --config      Path to config file
+-l, --log         Enable logging to file
+--bypass          Bypass and clears the instance lock
+```
 
 # Configuration
 
-Configuration is done through `config.toml` located in the project directory
+Configuration is done through `config.toml`
+
+Base on your distro, this is located at:
+
+- Linux: `$XDG_CONFIG_HOME/listentui/config.toml` or `$HOME/.config/listentui/config.toml`
+- Windows: `%APPDATA%\listentui\config.toml`
 
 #### System
 
@@ -84,6 +117,7 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `raise_volume_fine`: raise the volume by 1
 - `favourite_song`: favourite the current playing song (only when logged in)
 - `restart_player`: restart the player
+- `open_terminal`: open the integrated terminal
 
 #### Display
 
@@ -104,8 +138,40 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `restart_timeout`: the timeout (secs) to restart the player when there is no playback
 - `[player.mpv_options]`: additional options that can be passed into mpv (the default is recommended), see [mvp options](https://mpv.io/manual/master/#options) for more info
 
-# Extra
+# Terminal
+
+![image of terminal](.assets/terminal.png)
+
+The terminal allows user to query different information through listen.moe
+
+## Usage
+
+```txt
+{help,clear,eval,album,artist,song,preview,pv,user,character,source,check_favorite,cf,check,favorite,f,download}
+
+help                        Print help for given command
+clear                       Clear the console OUtPUt
+eval                        Evaluate a python expression
+album                       Fetch info on an album
+artist                      Fetch info on an artist
+song                        Fetch info on a song
+preview (pv)                Preview a portion of the song audio
+user                        Fetch info on an user
+character                   Fetch info on a character
+source                      Fetch info on a source
+check_favorite (cf, check)  Check if the song has been favorited
+favorite (f)                Favorite a song
+download                    Download a song
+```
+
+If you're unsure, run `help {command}` for more information about the command
+
+# Additional features
 
 ### `Dynamic Range Compression`
 
-Add `af = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5"` to `mpv_options`
+Mpv supports dynamic range compression (lower the sounds at higher volume and raise the sound at lower volume), if you want to use drc, add this to `mpv_options` in config.
+
+```toml
+af = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5" 
+```

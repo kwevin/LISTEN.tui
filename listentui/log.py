@@ -1,22 +1,23 @@
 import datetime
 import logging
-import sys
 from logging.handlers import RotatingFileHandler
 from os import mkdir
 from pathlib import Path
-from types import TracebackType
-from typing import Type
+from typing import Optional
 
 
 class Logger(logging.Logger):
     @staticmethod
-    def create_logger(verbose: bool) -> logging.Logger:
+    def create_logger(verbose: bool, log: Optional[Path] = None) -> logging.Logger:
         level = logging.DEBUG if verbose else logging.WARNING
-        log_folder = Path().resolve().joinpath('logs')
-        log_file = log_folder.joinpath('log').absolute()
+        if log:
+            log_file = log
+        else:
+            log_folder = Path().resolve().joinpath('logs')
+            log_file = log_folder.joinpath('log').absolute()
 
-        if not log_folder.is_dir():
-            mkdir(log_folder)
+            if not log_folder.is_dir():
+                mkdir(log_folder)
 
         file_handler = RotatingFileHandler(
             filename=log_file,
@@ -32,16 +33,10 @@ class Logger(logging.Logger):
             handlers=[file_handler],
             datefmt="%H:%M:%S"
         )
-        log = logging.getLogger(__name__)
+        logger = logging.getLogger(__name__)
 
-        def exception_handler(exc_type: Type[BaseException],
-                              exc_value: BaseException,
-                              trace: TracebackType):
-            log.error("Uncaught Exception", exc_info=(exc_type, exc_value, trace))
-        sys.excepthook = exception_handler
-
-        log.info('\n')
-        log.info("========== Listen RPC ==========")
-        log.info(f"Started at {datetime.datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}")
-        log.info("================================")
-        return log
+        logger.info('\n')
+        logger.info("========== Listen RPC ==========")
+        logger.info(f"Started at {datetime.datetime.now().strftime('%d/%m/%Y, %H:%M:%S')}")
+        logger.info("================================")
+        return logger

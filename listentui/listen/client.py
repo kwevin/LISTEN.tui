@@ -112,6 +112,7 @@ class BaseClient:
                         duration
                         played
                         titleRomaji
+                        snippet
                     """,
             "generic": """
                         id

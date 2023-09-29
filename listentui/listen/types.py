@@ -233,6 +233,7 @@ class Song:
             'artists': Song._get_artists(data),
             'album': Song._get_albums(data),
             'characters': Song._get_characters(data),
+            'snippet': data.get('snippet')
         }
         if (p := data.get('played', None)):
             kwargs.update({'played': p})
@@ -317,12 +318,6 @@ class Song:
         name = None
         char_name = None
         lst_string: list[str] = []
-        character_map: dict[int, Character] = {}
-
-        if self.characters:
-            for character in self.characters:
-                character_map[character.id] = character
-
         for idx, artist in enumerate(self.artists):
             if count:
                 if idx + 1 > count:
@@ -332,18 +327,27 @@ class Song:
             else:
                 name = artist.name
 
-            if self.characters and artist.character and show_character:
-                for character in artist.character:
-                    if (char := character_map.get(character.id)):
-                        if romaji_first:
-                            char_name = char.name_romaji if char.name_romaji else char.name
-                        else:
-                            char_name = char.name
+            if show_character:
+                character_map: dict[int, Character] = {}
 
-                if name and char_name:
-                    lst_string.append(f'{char_name} (CV: {name})')
-            elif name:
-                lst_string.append(name)
+                if self.characters:
+                    for character in self.characters:
+                        character_map[character.id] = character
+                if self.characters and artist.character:
+                    for character in artist.character:
+                        if (char := character_map.get(character.id)):
+                            if romaji_first:
+                                char_name = char.name_romaji if char.name_romaji else char.name
+                            else:
+                                char_name = char.name
+
+                    if name and char_name:
+                        lst_string.append(f'{char_name} (CV: {name})')
+                elif name:
+                    lst_string.append(name)
+            else:
+                if name:
+                    lst_string.append(name)
 
         return f"{sep}".join(lst_string)
 
@@ -419,6 +423,7 @@ class Song:
     album: Album | None
     duration: int | None
     time_end: int
+    snippet: Optional[str] = None
     played: Optional[int] = None
     title_romaji: Optional[str] = None
     is_favorited: bool = False

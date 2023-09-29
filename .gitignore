@@ -2,6 +2,9 @@
 .persist
 logs
 dist
+build
+*.spec
+upx*
 __pycache__
 devconf.toml
 _instance.lock

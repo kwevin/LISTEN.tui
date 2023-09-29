@@ -1,4 +1,5 @@
 import os
+import sys
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from string import Template
@@ -107,16 +108,39 @@ class Configuration:
 class Config:
     _CONFIG: "Config"
 
-    def __init__(self, config_path: Path) -> None:
-        self.config_path = Path(config_path).resolve()
-        if not self.config_path.is_file():
-            self._write(self.config_path, self._default())
-        self.persist_path = Path().resolve().joinpath('.persist\\persist.toml')
-        if not self.persist_path.parent.is_dir():
-            os.mkdir(self.persist_path.parent)
-            self._write(self.persist_path, asdict(Persist()))
-        if not self.persist_path.is_file():
-            self._write(self.persist_path, asdict(Persist()))
+    def __init__(self, config_file: Optional[Path] = None) -> None:
+        if config_file:
+            self.config_file = config_file
+        else:
+            if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
+                xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+                if xdg_config_home:
+                    self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
+                else:
+                    user_home = os.environ.get('HOME')
+                    if not user_home:
+                        raise Exception("Where da hell is your $HOME directory")
+                    xdg_config_home = Path(user_home).resolve().joinpath('.config')
+                    self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
+            elif sys.platform == "win32":
+                roaming = os.environ.get("APPDATA")
+                if not roaming:
+                    raise Exception("uhh you dont have appdata roaming folder?")
+                self.config_root = Path(roaming).resolve().joinpath('listentui')
+            else:
+                raise NotImplementedError("Not supported")
+
+            if not self.config_root.is_dir():
+                os.mkdir(self.config_root)
+            self.config_file = Path(self.config_root).joinpath('config.toml')
+
+        if not self.config_file.is_file():
+            self._write(self.config_file, self._default())
+
+        self.persist_file = self.config_root.joinpath('.persist\\persist.toml')
+        if not self.persist_file.parent.is_dir():
+            os.mkdir(self.persist_file.parent)
+            self._write(self.persist_file, asdict(Persist()))
 
         self._load()
         Config._CONFIG = self
@@ -152,17 +176,8 @@ class Config:
         else:
             return Config._CONFIG
 
-    @classmethod
-    def create_new(cls: Type[Self], path: Optional[Path] = None) -> Self:
-        if not path:
-            path = Path().resolve().joinpath('config.toml')
-        else:
-            path = path
-        Config._write(path, Config._default())
-        return cls(path)
-
     def _load(self) -> None:
-        with open(self.config_path, 'rb') as f:
+        with open(self.config_file, 'rb') as f:
             self._conf = tomli.load(f)
 
         for catagory in self._conf.keys():
@@ -180,7 +195,7 @@ class Config:
                 case _:
                     pass
 
-        with open(self.persist_path, 'rb') as f:
+        with open(self.persist_file, 'rb') as f:
             self._pers = tomli.load(f)
             self._persist = Persist(**self._pers)
 
@@ -196,11 +211,13 @@ class Config:
     def update(self, component: str, key: str, value: Any):
         if component == 'persist':
             self._pers[key] = value
-            self._write(self.persist_path, self._pers)
+            self._write(self.persist_file, self._pers)
             return
         self._conf[component][key] = value
-        self._write(self.config_path, self._conf)
+        self._write(self.config_file, self._conf)
+
+        self._load()
 
 
 if __name__ == "__main__":
-    conf = Config.create_new()
+    Config()

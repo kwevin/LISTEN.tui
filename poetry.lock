@@ -123,6 +123,17 @@ files = [
 frozenlist = ">=1.1.0"
 
 [[package]]
+name = "altgraph"
+version = "0.17.4"
+description = "Python graph (network) package"
+optional = false
+python-versions = "*"
+files = [
+    {file = "altgraph-0.17.4-py2.py3-none-any.whl", hash = "sha256:642743b4750de17e655e6711601b077bc6598dbfa3ba5fa2b2a35ce12b508dff"},
+    {file = "altgraph-0.17.4.tar.gz", hash = "sha256:1b5afbb98f6c4dcadb2e2ae6ab9fa994bbb8c1d75f4fa96d340f9437ae454406"},
+]
+
+[[package]]
 name = "async-timeout"
 version = "4.0.3"
 description = "Timeout context manager for asyncio programs"
@@ -413,6 +424,20 @@ plugins = ["setuptools"]
 requirements-deprecated-finder = ["pip-api", "pipreqs"]
 
 [[package]]
+name = "macholib"
+version = "1.16.3"
+description = "Mach-O header analysis and editing"
+optional = false
+python-versions = "*"
+files = [
+    {file = "macholib-1.16.3-py2.py3-none-any.whl", hash = "sha256:0e315d7583d38b8c77e815b1ecbdbf504a8258d8b3e17b61165c6feb60d18f2c"},
+    {file = "macholib-1.16.3.tar.gz", hash = "sha256:07ae9e15e8e4cd9a788013d81f5908b3609aa76f9b1421bae9c4d7606ec86a30"},
+]
+
+[package.dependencies]
+altgraph = ">=0.17"
+
+[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -542,6 +567,28 @@ files = [
 ]
 
 [[package]]
+name = "packaging"
+version = "23.1"
+description = "Core utilities for Python packages"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "packaging-23.1-py3-none-any.whl", hash = "sha256:994793af429502c4ea2ebf6bf664629d07c1a9fe974af92966e4b8d2df7edc61"},
+    {file = "packaging-23.1.tar.gz", hash = "sha256:a392980d2b6cffa644431898be54b0045151319d1e7ec34f0cfed48767dd334f"},
+]
+
+[[package]]
+name = "pefile"
+version = "2023.2.7"
+description = "Python PE parsing module"
+optional = false
+python-versions = ">=3.6.0"
+files = [
+    {file = "pefile-2023.2.7-py3-none-any.whl", hash = "sha256:da185cd2af68c08a6cd4481f7325ed600a88f6a813bad9dea07ab3ef73d8d8d6"},
+    {file = "pefile-2023.2.7.tar.gz", hash = "sha256:82e6114004b3d6911c77c3953e3838654b04511b8b66e8583db70c65998017dc"},
+]
+
+[[package]]
 name = "psutil"
 version = "5.9.5"
 description = "Cross-platform lib for process and system monitoring in Python."
@@ -604,6 +651,50 @@ files = [
 plugins = ["importlib-metadata"]
 
 [[package]]
+name = "pyinstaller"
+version = "6.0.0"
+description = "PyInstaller bundles a Python application and all its dependencies into a single package."
+optional = false
+python-versions = "<3.13,>=3.8"
+files = [
+    {file = "pyinstaller-6.0.0-py3-none-macosx_10_13_universal2.whl", hash = "sha256:d84b06fb9002109bfc542e76860b81459a8585af0bbdabcfc5dcf272ef230de7"},
+    {file = "pyinstaller-6.0.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:aa922d1d73881d0820a341d2c406a571cc94630bdcdc275427c844a12e6e376e"},
+    {file = "pyinstaller-6.0.0-py3-none-manylinux2014_i686.whl", hash = "sha256:52e5b3a2371d7231de17515c7c78d8d4a39d70c8c095e71d55b3b83434a193a8"},
+    {file = "pyinstaller-6.0.0-py3-none-manylinux2014_ppc64le.whl", hash = "sha256:4a75bde5cda259bb31f2294960d75b9d5c148001b2b0bd20a91f9c2116675a6c"},
+    {file = "pyinstaller-6.0.0-py3-none-manylinux2014_s390x.whl", hash = "sha256:5314f6f08d2bcbc031778618ba97d9098d106119c2e616b3b081171fe42f5415"},
+    {file = "pyinstaller-6.0.0-py3-none-manylinux2014_x86_64.whl", hash = "sha256:0ad7cc3776ca17d0bededcc352cba2b1c89eb4817bfabaf05972b9da8c424935"},
+    {file = "pyinstaller-6.0.0-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:cccdad6cfe7a5db7d7eb8df2e5678f8375268739d5933214e180da300aa54e37"},
+    {file = "pyinstaller-6.0.0-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:fb6af82989dac7c58bd25ed9ba3323bc443f8c1f03804f69c9f5e363bf4a021c"},
+    {file = "pyinstaller-6.0.0-py3-none-win32.whl", hash = "sha256:68769f5e6722474bb1038e35560444659db8b951388bfe0c669bb52a640cd0eb"},
+    {file = "pyinstaller-6.0.0-py3-none-win_amd64.whl", hash = "sha256:438a9e0d72a57d5bba4f112d256e39ea4033c76c65414c0693d8311faa14b090"},
+    {file = "pyinstaller-6.0.0-py3-none-win_arm64.whl", hash = "sha256:16a473065291dd7879bf596fa20e65bd9d1e8aafc2cef1bffa3e42e707e2e68e"},
+    {file = "pyinstaller-6.0.0.tar.gz", hash = "sha256:d702cff041f30e7a53500b630e07b081e5328d4655023319253d73935e75ade2"},
+]
+
+[package.dependencies]
+altgraph = "*"
+macholib = {version = ">=1.8", markers = "sys_platform == \"darwin\""}
+packaging = ">=20.0"
+pefile = {version = ">=2022.5.30", markers = "sys_platform == \"win32\""}
+pyinstaller-hooks-contrib = ">=2021.4"
+pywin32-ctypes = {version = ">=0.2.1", markers = "sys_platform == \"win32\""}
+setuptools = ">=42.0.0"
+
+[package.extras]
+hook-testing = ["execnet (>=1.5.0)", "psutil", "pytest (>=2.7.3)"]
+
+[[package]]
+name = "pyinstaller-hooks-contrib"
+version = "2023.9"
+description = "Community maintained hooks for PyInstaller"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pyinstaller-hooks-contrib-2023.9.tar.gz", hash = "sha256:76084b5988e3957a9df169d2a935d65500136967e710ddebf57263f1a909cd80"},
+    {file = "pyinstaller_hooks_contrib-2023.9-py2.py3-none-any.whl", hash = "sha256:f34f4c6807210025c8073ebe665f422a3aa2ac5f4c7ebf4c2a26cc77bebf63b5"},
+]
+
+[[package]]
 name = "pypresence"
 version = "4.3.0"
 description = "Discord RPC client written in Python"
@@ -628,6 +719,17 @@ files = [
 [package.extras]
 screenshot-raw = ["Pillow"]
 test = ["PyVirtualDisplay"]
+
+[[package]]
+name = "pywin32-ctypes"
+version = "0.2.2"
+description = "A (partial) reimplementation of pywin32 using ctypes/cffi"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "pywin32-ctypes-0.2.2.tar.gz", hash = "sha256:3426e063bdd5fd4df74a14fa3cf80a0b42845a87e1d1e81f6549f9daec593a60"},
+    {file = "pywin32_ctypes-0.2.2-py3-none-any.whl", hash = "sha256:bf490a1a709baf35d688fe0ecf980ed4de11d2b3e37b51e5442587a75d9957e7"},
+]
 
 [[package]]
 name = "readchar"
@@ -918,5 +1020,5 @@ multidict = ">=4.0"
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.11"
-content-hash = "4dadea30fa7d0f1a78848f73bca8c5e4ea7aef0c48afa4f593f0b1c83e25272d"
+python-versions = "^3.11,<3.13"
+content-hash = "7a4b83be5b7939269616586caff683bad2ea8204b1bf09c391ab1d8ec6bf8ec2"

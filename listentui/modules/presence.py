@@ -127,7 +127,7 @@ class DiscordRichPresence(BaseModule):
     async def sanitise(self, string: str) -> str:
         default: str = self.config.default_placeholder
 
-        if len(string) < 2:
+        if len(string.strip()) < 2:
             string += default
             return string.strip()
         if len(string) >= 128:
@@ -280,12 +280,3 @@ class DiscordRichPresence(BaseModule):
             except Exception as exc:
                 self.update_status(False, f"{exc}")
                 self._log.exception("Exception has occured")
-
-
-if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    e = DiscordRichPresence()
-    e.start()
-
-    while True:
-        input()

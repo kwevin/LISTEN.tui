@@ -2,25 +2,28 @@ import logging
 import os
 import time
 from argparse import ArgumentError, ArgumentParser, Namespace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from math import ceil
 from os import _exit  # pyright: ignore
-from pathlib import Path
 from threading import Thread
 from types import TracebackType
-from typing import Any, Callable, Optional, Self, Type, Union
+from typing import Any, Callable, NewType, Optional, Self, Type, Union
 
 from graphql import Source
 from psutil import pid_exists
 from readchar import key, readkey
+from rich.align import Align
 from rich.console import (Console, ConsoleOptions, ConsoleRenderable, Group,
                           RenderableType, RenderResult)
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.pretty import pretty_repr
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, Task
+from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
+                           SpinnerColumn, Task, TextColumn)
+from rich.spinner import Spinner
 from rich.style import Style
 from rich.table import Table
 from rich.text import Text
@@ -34,7 +37,9 @@ from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
 
+PRIMARY_COLOR = '#f92672'
 QueryType = Union[Album, Artist, Song, User, Character, Source]
+CommandID = NewType("commandID", int)
 
 
 def threaded(func: Callable[..., Any]) -> Any:
@@ -42,6 +47,48 @@ def threaded(func: Callable[..., Any]) -> Any:
     def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         Thread(target=func, args=(self, *args,), kwargs=kwargs).start()
     return wrapper
+
+
+@dataclass
+class CommandGroup:
+    command: str
+    output: RenderableType = field(default_factory=Text)
+
+
+class TerminalCommandHistoryHandler:  # idk how to name this
+
+    def __init__(self):
+        self._data: dict[CommandID, CommandGroup] = {}
+        self._command_id_count = 0
+
+    @property
+    def history_count(self):
+        return self._command_id_count
+
+    def add(self, command: str, output: Optional[RenderableType] = None) -> CommandID:
+        command_id = CommandID(self._command_id_count)
+        if output:
+            self._data[command_id] = CommandGroup(command, output)
+        else:
+            self._data[command_id] = CommandGroup(command)
+        self._command_id_count += 1
+        return command_id
+
+    def update(self, id: CommandID, result: RenderableType) -> None:
+        self._data[id].output = result
+
+    def render(self) -> Group:
+        render_objects: list[RenderableType] = []
+        for group in self._data.values():
+            table = Table.grid()
+            prompt = Text()
+            prompt.append("> ", style=PRIMARY_COLOR)
+            prompt.append(group.command)
+            table.add_row(prompt)
+            table.add_row(group.output)
+            render_objects.append(table)
+
+        return Group(*render_objects)
 
 
 class TerminalPanel(ConsoleRenderable):
@@ -54,11 +101,11 @@ class TerminalPanel(ConsoleRenderable):
         self.layout.split_column(
             Layout(name='console'),
         )
-        self.console_out: list[tuple[str, Table]] = []
         self.parser, self.subparser = self.build_parser()
         self.height: int = 0
         self.scroll_offset: int = 0
         self.max_scroll_height: int = 0
+        self.history = TerminalCommandHistoryHandler()
 
         pass
 
@@ -67,7 +114,7 @@ class TerminalPanel(ConsoleRenderable):
         self.height = options.max_height
         console = Console(width=width - 4, height=self.height - 2)
         with console.capture() as capture:
-            console.print(self.render_out())
+            console.print(self.render())
         render_list = capture.get().split('\n')
         self.max_scroll_height = len(render_list) - 2
         to_render = render_list[self.scroll_offset:]
@@ -89,6 +136,16 @@ class TerminalPanel(ConsoleRenderable):
         self.buffer.clear()
         if self.panel and self.renderable:
             self.panel.update(self.renderable)
+
+    def render(self) -> Table:
+        table = Table.grid()
+        if self.history.history_count != 0:
+            table.add_row(self.history.render())
+        field = Text()
+        field.append("> ", style=PRIMARY_COLOR)
+        field.append(f'{"".join(self.buffer)}|')
+        table.add_row(field)
+        return table
 
     def build_parser(self):
         parser = ArgumentParser(prog="", exit_on_error=False, add_help=False)
@@ -138,6 +195,15 @@ class TerminalPanel(ConsoleRenderable):
                           help="(optional), default to current song album",
                           metavar="SongID", type=int)
         song.set_defaults(func=self.song)
+
+        pv = subparser.add_parser('preview',
+                                  aliases=['pv'],
+                                  help="Preview a portion of the song audio",
+                                  add_help=False)
+        pv.add_argument("id",
+                        help="The id of the song",
+                        metavar="SongID", type=int)
+        pv.set_defaults(func=self.preview)
 
         user = subparser.add_parser('user',
                                     help="Fetch info on an user",
@@ -223,10 +289,15 @@ class TerminalPanel(ConsoleRenderable):
     def execute_buffer(self) -> None:
         command = "".join(self.buffer)
         # https://github.com/python/cpython/issues/103498
-        if command.startswith('eval'):
+        the_annoying_bunch = ('eval', 'preview', 'pv', 'user')
+        if command.startswith(the_annoying_bunch):
             args = command.split()
+            if args[0] not in the_annoying_bunch:
+                self.history.add(command, self.tablelate(f"Unknown command: {command}"))
+                self.buffer.clear()
+                return
             if len(args) == 1:
-                self.console_out.append((command, self.tablelate("Requires argument: expression")))
+                self.history.add(command, self.tablelate(f"Requires an argument, run 'help {args[0]} for more info"))
                 self.buffer.clear()
                 return
         try:
@@ -234,27 +305,14 @@ class TerminalPanel(ConsoleRenderable):
                 return
             args, others = self.parser.parse_known_args(command.split())
             if len(others) > 0:
-                self.console_out.append((command, self.tablelate(f"Unknown argument: {' '.join(others)}")))
+                self.history.add(command, self.tablelate(f"Unknown argument: {' '.join(others)}"))
                 self.buffer.clear()
                 return
+            self.buffer.clear()
             args.func(command, args)
         except ArgumentError:
-            self.console_out.append((command, self.tablelate(f"Unknown command: {command}")))
-        self.buffer.clear()
-
-    def render_out(self) -> Table:
-        table = Table.grid()
-        for input, res in self.console_out:
-            prompt = Text()
-            prompt.append(">", style='#f92672')
-            prompt.append(f" {input}")
-            table.add_row(prompt)
-            table.add_row(res)
-        field = Text()
-        field.append("> ", style='#f92672')
-        field.append(f'{"".join(self.buffer)}|')
-        table.add_row(field)
-        return table
+            self.history.add(command, self.tablelate(f"Unknown command: {command}"))
+            self.buffer.clear()
 
     def tablelate(self, data: Union[list[Any], str, int, QueryType, RenderableType]) -> Table:
         table = Table.grid()
@@ -277,13 +335,13 @@ class TerminalPanel(ConsoleRenderable):
 
     def help(self, command: str, args: Namespace):
         if not args.cmd:
-            self.console_out.append((command, self.tablelate(self.parser.format_help())))
+            self.history.add(command, self.tablelate(self.parser.format_help()))
         else:
             subcmd = self.subparser.choices.get(args.cmd)
             if not subcmd:
-                self.console_out.append((f"{command}", self.tablelate(f"{args.cmd} is not a valid command")))
+                self.history.add(f"{command}", self.tablelate(f"{args.cmd} is not a valid command"))
             else:
-                self.console_out.append((f"{command}", self.tablelate(subcmd.format_help())))
+                self.history.add(f"{command}", self.tablelate(subcmd.format_help()))
 
     def clear(self, _: str, __: Namespace):
         self.scroll_offset = self.max_scroll_height
@@ -294,7 +352,7 @@ class TerminalPanel(ConsoleRenderable):
             res = pretty_repr(eval(" ".join(cmd)))
         except Exception as e:
             res = pretty_repr(e)
-        self.console_out.append((f"{command}", self.tablelate(res)))
+        self.history.add(f"{command}", self.tablelate(res))
 
     def album(self, command: str, args: Namespace):
         if args.id:
@@ -303,13 +361,14 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.album:
                 album_id = self.main.current_song.album.id
             else:
-                self.console_out.append((command, self.tablelate("Current song have no album")))
+                self.history.add(command, self.tablelate("Current song have no album"))
                 return
+        command_id = self.history.add(command, Spinner('dots', "querying album...", style=PRIMARY_COLOR))
         res = self.main.listen.album(album_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No album found")))
+            self.history.update(command_id, self.tablelate("No album found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
 
     def artist(self, command: str, args: Namespace):
         if args.id:
@@ -318,32 +377,67 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.artists:
                 artist_id = self.main.current_song.artists[0].id
             else:
-                self.console_out.append((command, self.tablelate("Current song have no artist")))
+                self.history.add(command, self.tablelate("Current song have no artist"))
                 return
+        command_id = self.history.add(command, Spinner('dots', "querying artist...", style=PRIMARY_COLOR))
         res = self.main.listen.artist(artist_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No artist found")))
+            self.history.update(command_id, self.tablelate("No artist found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
 
     def song(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
         else:
             song_id = self.main.current_song.id
+        command_id = self.history.add(command, Spinner('dots', "querying song...", style=PRIMARY_COLOR))
         res = self.main.listen.song(song_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No song found")))
+            self.history.update(command_id, self.tablelate("No song found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
+
+    def preview(self, command: str, args: Namespace):
+        song_id = args.id
+        command_id = self.history.add(command, Spinner('dots', "querying song...", style=PRIMARY_COLOR))
+        res = self.main.listen.song(song_id)
+        if not res:
+            self.history.update(command_id, self.tablelate("No song found"))
+        else:
+            def progress():
+                romaji_first = self.main.config.display.romaji_first
+                if res:
+                    if romaji_first:
+                        title = res.title_romaji or res.title
+                    else:
+                        title = res.title
+                else:
+                    title = None
+                progress = Progress(SpinnerColumn(),
+                                    TextColumn("{task.description}"),
+                                    BarColumn(),
+                                    MofNTimeCompleteColumn())
+                task = progress.add_task(f"Playing {title}", total=15)
+                self.history.update(command_id, self.tablelate(progress))
+                time.sleep(1)
+                while not progress.finished:
+                    progress.advance(task)
+                    time.sleep(1)
+
+            if res.snippet:
+                self.main.player.preview(res.snippet, on_play=progress)
+            else:
+                self.history.update(command_id, self.tablelate("Song have no playable snippet"))
 
     def user(self, command: str, args: Namespace):
         username = args.username
+        command_id = self.history.add(command, Spinner('dots', "querying user...", style=PRIMARY_COLOR))
         res = self.main.listen.user(username)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No user found")))
+            self.history.update(command_id, self.tablelate("No user found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
 
     def character(self, command: str, args: Namespace):
         if args.id:
@@ -352,13 +446,14 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.characters:
                 character_id = self.main.current_song.characters[0].id
             else:
-                self.console_out.append((command, self.tablelate("Current song have no characters")))
+                self.history.add(command, self.tablelate("Current song have no characters"))
                 return
+        command_id = self.history.add(command, Spinner('dots', "querying character...", style=PRIMARY_COLOR))
         res = self.main.listen.character(character_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No character found")))
+            self.history.update(command_id, self.tablelate("No character found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
 
     def source(self, command: str, args: Namespace):
         if args.id:
@@ -367,13 +462,14 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.source:
                 source_id = self.main.current_song.source.id
             else:
-                self.console_out.append((command, self.tablelate("Current song have no source")))
+                self.history.add(command, self.tablelate("Current song have no source"))
                 return
+        command_id = self.history.add(command, Spinner('dots', "querying source...", style=PRIMARY_COLOR))
         res = self.main.listen.source(source_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No source found")))
+            self.history.update(command_id, self.tablelate("No source found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(res)))
+            self.history.update(command_id, self.tablelate(res))
 
     def check_favorite(self, command: str, args: Namespace):
         if args.id:
@@ -381,14 +477,14 @@ class TerminalPanel(ConsoleRenderable):
         else:
             song_id = self.main.current_song.id
             status = self.main.current_song.is_favorited
-            self.console_out.append((command,
-                                     self.tablelate(f"song {song_id}: {status}")))
+            self.history.add(command, self.tablelate(f"song {song_id}: {status}"))
             return
+        command_id = self.history.add(command, Spinner('dots', "checking favorite...", style=PRIMARY_COLOR))
         res = self.main.listen.check_favorite(song_id)
         if not res:
-            self.console_out.append((f"{command}", self.tablelate("No song found")))
+            self.history.update(command_id, self.tablelate("No song found"))
         else:
-            self.console_out.append((f"{command}", self.tablelate(f"song {song_id}: {res}")))
+            self.history.update(command_id, self.tablelate(f"song {song_id}: {res}"))
 
     def favorite(self, command: str, args: Namespace):
         romaji_first = self.main.config.display.romaji_first
@@ -404,27 +500,28 @@ class TerminalPanel(ConsoleRenderable):
                 title = self.main.current_song.title_romaji or self.main.current_song.title
             else:
                 title = self.main.current_song.title
-            artist = self.main.current_song.format_artists(0, romaji_first=romaji_first, sep=sep)
+            artist = self.main.current_song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
             if status:
-                self.console_out.append((f"{command}", self.tablelate(f"Favoriting {title} by {artist}")))
+                self.history.add(command, self.tablelate(f"Favoriting {title} by {artist}"))
             else:
-                self.console_out.append((f"{command}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+                self.history.add(command, self.tablelate(f"Unfavoriting {title} by {artist}"))
             return
 
+        command_id = self.history.add(command, Spinner('dots', "favoriting song...", style=PRIMARY_COLOR))
         song = self.main.listen.song(song_id)
         if not song:
-            self.console_out.append((f"{command}", self.tablelate("No song found")))
+            self.history.update(command_id, self.tablelate("No song found"))
         else:
             if romaji_first:
                 title = song.title_romaji or song.title
             else:
                 title = song.title
-            artist = song.format_artists(0, romaji_first=romaji_first, sep=sep)
+            artist = song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
             status = self.main.listen.check_favorite(song_id)
             if not status:
-                self.console_out.append((f"{command}", self.tablelate(f"Favoriting {title} by {artist}")))
+                self.history.update(command_id, self.tablelate(f"Favoriting {title} by {artist}"))
             else:
-                self.console_out.append((f"{command}", self.tablelate(f"Unfavoriting {title} by {artist}")))
+                self.history.update(command_id, self.tablelate(f"Unfavoriting {title} by {artist}"))
             Thread(target=self.main.listen.favorite_song, args=(song_id, )).start()
             self.main.user_panel.update()
 
@@ -434,7 +531,7 @@ class TerminalPanel(ConsoleRenderable):
         e = Progress()
         t.add_row(e)
         k = e.add_task('testing', total=100)
-        self.console_out.append((command, t))
+        self.history.add(command, t)
         while not e.finished:
             e.advance(k)
             time.sleep(0.2)
@@ -479,7 +576,7 @@ class PreviousSongPanel(ConsoleRenderable):
         table.add_column(ratio=8)
         title = Text()
         if song.is_favorited:
-            title.append(" ", Style(color='#f92672', bold=True))
+            title.append(" ", Style(color=PRIMARY_COLOR, bold=True))
         title.append(song.title or '')
         table.add_row("Title", title)
         if song.artists:
@@ -529,7 +626,7 @@ class UserPanel(ConsoleRenderable):
             feed_text = Text(overflow='fold')
             feed_text.append('Favorited ')
             feed_text.append(f'{feed.song.title} ')
-            feed_text.append('by ', style='#f92672')
+            feed_text.append('by ', style=PRIMARY_COLOR)
             artist = feed.song.format_artists(1, show_character=False, romaji_first=self.romaji_first, sep=self.sep)
             feed_text.append(f'{artist}')
             current_height += ceil(feed_text.cell_len / width) + 1
@@ -600,13 +697,15 @@ class InfoPanel(ConsoleRenderable):
             self.update_panel(data.requester)
         else:
             self.reset_panel()
+        if self.player.data:
+            self.calc_delay(self.player.data)
 
     def update_panel(self, data: Union[Event, Requester]):
         if isinstance(data, Event):
             self.panel_title = f"♫♪.ılılıll {data.name} llılılı.♫♪"
         else:
             self.panel_title = f"Requested by {data.display_name}"
-        self.panel_color = '#f92672'
+        self.panel_color = PRIMARY_COLOR
 
     def reset_panel(self):
         self.panel_title = None
@@ -622,7 +721,7 @@ class InfoPanel(ConsoleRenderable):
         table.add_column(ratio=8)
         title = Text()
         if song.is_favorited:
-            title.append(" ", Style(color='#f92672', bold=True))
+            title.append(" ", Style(color=PRIMARY_COLOR, bold=True))
         title.append(song.title or '')
 
         table.add_row("Title", title)
@@ -724,8 +823,11 @@ class MofNTimeCompleteColumn(MofNCompleteColumn):
 
 class Main:
 
-    def __init__(self) -> None:
+    def __init__(self, debug: bool = False, bypass: bool = False) -> None:
+        self.debug = debug
         self.config = Config.get_config()
+        if bypass:
+            self.free_instance_lock()
         if self.config.system.instance_lock:
             self.check_instance_lock()
         self.log = logging.getLogger(__name__)
@@ -817,18 +919,41 @@ class Main:
         return layout
 
     def check_instance_lock(self) -> None:
-        instance_lock = Path().resolve().joinpath('_instance.lock')
+        instance_lock = Config.get_config().config_root.joinpath('_instance.lock')
         if instance_lock.is_file():
             with open(instance_lock, 'r') as lock:
                 pid = lock.readline().rstrip()
             if pid_exists(int(pid)):
-                raise Exception("Another instance is already running")
+                console = Console()
+                height = round(console.options.max_height * 0.60)
+                width = round(console.options.max_width * 0.60)
+                warning = Align(Text("Another Instance of Listen.tui is Currently Running"),
+                                vertical='middle', align='center')
+                info = Align(Text("If this isn't the case, please run with '--bypass' once"), align='center')
+                mini_terminal = Layout()
+                mini_terminal.split_column(
+                    Layout(Panel(Text()), ratio=2),
+                    Layout(Align(Text(f"pid: {pid}"), vertical='middle', align='center'), ratio=8)
+                )
+                terminal = Align(Group(Panel(mini_terminal, height=height, style='white'), info),
+                                 width=width, height=height, vertical='middle', align='center')
+                layout = Layout()
+                layout.split_column(
+                    Layout(warning, ratio=2),
+                    Layout(terminal, ratio=8),
+                )
+                finale = Panel(layout, style='red', height=console.height)
+                with Live(finale, screen=True):
+                    input()
+                raise Exception("Another instance is running")
 
         with open(instance_lock, 'w') as lock:
             lock.write(f'{os.getpid()}')
 
     def free_instance_lock(self) -> None:
-        os.remove(Path().resolve().joinpath('_instance.lock'))
+        instance_lock = Config.get_config().config_root.joinpath('_instance.lock')
+        if instance_lock.is_file():
+            os.remove(instance_lock)
 
     def favorite_song(self) -> None:
         if not self.logged_in:
@@ -891,7 +1016,8 @@ class Main:
             return table
 
         refresh_per_second = 30
-        with Live(init(), refresh_per_second=refresh_per_second, screen=False) as self.live:
+        screen = not self.debug
+        with Live(init(), refresh_per_second=refresh_per_second, screen=screen) as self.live:
             while not all([i.status.running for i in self.running_modules]):
                 self.live.update(init())
             self.live.update(self.layout)
@@ -907,8 +1033,3 @@ class Main:
             while True:
                 self.layout['main'].update(self.info_panel)
                 time.sleep(1 / refresh_per_second)
-
-
-def main():
-    _main = Main()
-    _main.run()
