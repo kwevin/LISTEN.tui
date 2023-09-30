@@ -164,7 +164,7 @@ character                   Fetch info on a character
 source                      Fetch info on a source
 check_favorite (cf, check)  Check if the song has been favorited
 favorite (f)                Favorite a song
-download                    Download a song
+(WIP)download               Download a song
 ```
 
 If you're unsure, run `help {command}` for more information about the command
@@ -190,7 +190,6 @@ Requires:
 poetry shell
 poetry install
 poetry build
-poetry run python build.py
 ```
 
 build files are located in `dist`
