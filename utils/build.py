@@ -20,7 +20,7 @@ def main():
 
     if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
         linux = base.copy()
-        linux.append("listentui\\__main__.py")
+        linux.append("listentui/__main__.py")
         with console.status("Building standalone"):
             pyinstaller(linux)
 
