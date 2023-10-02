@@ -1,13 +1,9 @@
 .vscode
-.persist
 logs
 dist
 build
-*.spec
-upx*
-logo.ico
+upx
 __pycache__
-devconf.toml
-_instance.lock
+*.spec
 *.test
 *.dll

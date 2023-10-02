@@ -1,0 +1,66 @@
+name: "Build Artefacts"
+
+on: 
+    workflow_dispatch:
+    push:
+        branches: [main]
+
+jobs:
+    build_linux:
+        name: Build Linux
+        runs-on: ubuntu-latest
+        steps:
+            - uses: action/checkout@v3
+            - uses: action/setup-python@v4
+              with: 
+                python-version: '3.11.1'
+            
+            - name: Install Requirements
+              run: |
+                python -m pip install -U pip
+                curl -sSL https://install.python-poetry.org | python3 -
+                poetry shell
+                poetry install --with dev
+
+            - name: Build
+              run: |
+                poetry run python ./utils/build.py
+            
+            - name: Upload Artefacts
+              uses: action/upload-artifact@v3
+              with: 
+                path: |
+                    dist/listentui
+
+    build_window:
+        name: Build Window
+        runs-on: windows-latest
+        steps:
+            - uses: action/checkout@v3
+            - uses: action/setup-python@v4
+              with: 
+                python-version: '3.11.1'
+            
+            - name: Install Requirements
+              run: |
+                python -m pip install -U pip
+                curl -sSL https://install.python-poetry.org | python3 -
+                poetry shell
+                poetry install --with dev
+
+            - name: Build
+              run: |
+                poetry run python ./utils/build.py
+            
+            - name: Upload Artefacts
+              uses: action/upload-artifact@v3
+              with: 
+                path: |
+                    dist/listentui.exe
+                    dist/listentui_portable.exe
+        
+
+                
+
+
+
