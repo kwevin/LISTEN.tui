@@ -10,8 +10,8 @@ jobs:
         name: Build Linux
         runs-on: ubuntu-latest
         steps:
-            - uses: action/checkout@v4
-            - uses: action/setup-python@v4
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v4
               with: 
                 python-version: '3.11.1'
             
@@ -27,7 +27,7 @@ jobs:
                 poetry run python ./utils/build.py
             
             - name: Upload Artefacts
-              uses: action/upload-artifact@v3
+              uses: actions/upload-artifact@v3
               with: 
                 path: |
                     dist/listentui
@@ -36,8 +36,8 @@ jobs:
         name: Build Window
         runs-on: windows-latest
         steps:
-            - uses: action/checkout@v4
-            - uses: action/setup-python@v4
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v4
               with: 
                 python-version: '3.11.1'
             
@@ -53,7 +53,7 @@ jobs:
                 poetry run python ./utils/build.py
             
             - name: Upload Artefacts
-              uses: action/upload-artifact@v3
+              uses: actions/upload-artifact@v3
               with: 
                 path: |
                     dist/listentui.exe
