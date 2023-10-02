@@ -27,9 +27,9 @@ def main():
     elif sys.platform == 'win32':
         console.print("Building on windows")
         win = base.copy()
-        script = "listentui\\__main__.py"
+        script = "listentui/__main__.py"
 
-        icon = Path().resolve().joinpath('dist\\logo.ico')
+        icon = Path().resolve().joinpath('dist/logo.ico')
         if icon.is_file():
             console.print("Icon file found, building with icon")
             win.extend(['--icon', f'{icon}'])
@@ -47,8 +47,11 @@ def main():
 
         libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
         if libmpv is None:
-            # should download mpv-2.dll instead
-            console.print("No mpv.dll found, unable to build standalone executable with mpv")
+            libmpv = Path('listentui/listen/mpv-2.dll').resolve()
+            if not libmpv.is_file():
+                # should download mpv-2.dll instead
+                console.print("No mpv.dll found, unable to build standalone executable with mpv")
+                return
 
         if libmpv:
             with console.status("Building standalone with mpv") as task:
