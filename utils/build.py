@@ -51,7 +51,7 @@ def main():
                 console.print("No mpv.dll found, unable to build standalone executable with mpv")
                 return
             else:
-                standalone.extend(['--add-binary', f'{libmpv}'])
+                standalone.extend(['--add-binary', f'{libmpv};.'])
         standalone.append(script)
         win.append(script)
 
