@@ -44,12 +44,22 @@ jobs:
               run: |
                 python -m pip install -U pip
                 curl -sSL https://install.python-poetry.org | python3 -
-                Add-Content $env:GITHUB_PATH "C:\Users\runneradmin\AppData\Roaming\Python\Scripts\poetry"
-                poetry install --with dev
+                C:\Users\runneradmin\AppData\Roaming\Python\Scripts\poetry install --with dev
+            
+            - name: Install libmpv
+              run: |
+                New-Item -ItemType Directory libmpv
+                Set-Location libmpv
+                Invoke-WebRequest -UserAgent "Wget" -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-v3-20230924-git-140d018.7z/download" -OutFile libmpv.7z
+                7z x libmpv.7z
+                Move-Item libmpv-2.dll ..\mpv-2.dll
+                Set-Location ..
+                Remove-Item libmpv -Recurse -Force
+
 
             - name: Build
               run: |
-                poetry run python ./utils/build.py
+                C:\Users\runneradmin\AppData\Roaming\Python\Scripts\poetry run python ./utils/build.py
             
             - name: Upload Artefacts
               uses: actions/upload-artifact@v3

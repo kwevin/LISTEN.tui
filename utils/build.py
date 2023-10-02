@@ -29,7 +29,7 @@ def main():
         win = base.copy()
         script = "listentui\\__main__.py"
 
-        icon = Path().resolve().joinpath('logo.ico')
+        icon = Path().resolve().joinpath('dist\\logo.ico')
         if icon.is_file():
             console.print("Icon file found, building with icon")
             win.extend(['--icon', f'{icon}'])
