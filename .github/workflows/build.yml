@@ -52,7 +52,7 @@ jobs:
                 Set-Location libmpv
                 Invoke-WebRequest -UserAgent "Wget" -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-x86_64-v3-20230924-git-140d018.7z/download" -OutFile libmpv.7z
                 7z x libmpv.7z
-                Move-Item libmpv-2.dll ..\listentui\listen\mpv-2.dll
+                Move-Item libmpv-2.dll ..\mpv-2.dll
                 Set-Location ..
                 Remove-Item libmpv -Recurse -Force
 

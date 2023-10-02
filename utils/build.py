@@ -29,7 +29,7 @@ def main():
         win = base.copy()
         script = "listentui/__main__.py"
 
-        icon = Path().resolve().joinpath('dist/logo.ico')
+        icon = Path().resolve().joinpath('utils/logo.ico')
         if icon.is_file():
             console.print("Icon file found, building with icon")
             win.extend(['--icon', f'{icon}'])
@@ -43,48 +43,49 @@ def main():
         else:
             console.print("Upx not found, skipping upx")
 
-        win.append(script)
-
+        standalone = win.copy()
         libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
         if libmpv is None:
-            libmpv = Path('listentui/listen/mpv-2.dll').resolve()
+            libmpv = Path('mpv-2.dll').resolve()
             if not libmpv.is_file():
-                # should download mpv-2.dll instead
                 console.print("No mpv.dll found, unable to build standalone executable with mpv")
                 return
+            else:
+                standalone.extend(['--add-binary', f'{libmpv}'])
+        standalone.append(script)
+        win.append(script)
 
-        if libmpv:
-            with console.status("Building standalone with mpv") as task:
-                pyinstaller(win)
-                move(Path().resolve().joinpath('dist/listentui.exe'),
-                     Path().resolve().joinpath('dist/listentui_portable.exe'))
+        with console.status("Building standalone with mpv") as task:
+            pyinstaller(standalone)
+            move(Path().resolve().joinpath('dist/listentui.exe'),
+                 Path().resolve().joinpath('dist/listentui_portable.exe'))
 
-                task.update("Building standalone without mpv")
-                specfile = Path().resolve().joinpath('listentui.spec')
-                with open(specfile, 'r') as spec:
-                    data = spec.readlines()
+            task.update("Building standalone without mpv")
+            # specfile = Path().resolve().joinpath('listentui.spec')
+            # with open(specfile, 'r') as spec:
+            #     data = spec.readlines()
 
-                lib = Path(libmpv).name
-                for idx, value in enumerate(data):
-                    if value.startswith('pyz'):
-                        insert_point = idx
-                        break
+            # lib = Path(libmpv).name
+            # for idx, value in enumerate(data):
+            #     if value.startswith('pyz'):
+            #         insert_point = idx
+            #         break
 
-                data.insert(insert_point, f"a.binaries -= TOC([('{lib}', None, None)])\n")  # type: ignore
-                with open(specfile, 'w') as spec:
-                    spec.writelines(data)
+            # data.insert(insert_point, f"a.binaries -= TOC([('{lib}', None, None)])\n")  # type: ignore
+            # with open(specfile, 'w') as spec:
+            #     spec.writelines(data)
 
-                win.pop()
-                win.remove("--onefile")
-                win.remove("--name=listentui")
-                if icon.is_file():
-                    win.remove("--icon")
-                    win.remove(f"{icon}")
+            # win.pop()
+            # win.remove("--onefile")
+            # win.remove("--name=listentui")
+            # if icon.is_file():
+            #     win.remove("--icon")
+            #     win.remove(f"{icon}")
 
-                win.append(f"{specfile}")
-                pyinstaller(win)
+            # win.append(f"{specfile}")
+            pyinstaller(win)
 
-                os.remove(specfile)
+            # os.remove(specfile)
 
 
 if __name__ == "__main__":
