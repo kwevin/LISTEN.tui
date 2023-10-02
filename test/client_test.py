@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, TestCase
 
@@ -5,8 +6,9 @@ from listentui.config import Config
 from listentui.listen.client import (AIOListen, Listen,
                                      NotAuthenticatedException)
 from listentui.listen.types import (Album, AlbumID, Artist, ArtistID,
-                                    Character, CharacterID, CurrentUser, Song,
-                                    SongID, Source, SourceID, User)
+                                    Character, CharacterID, CurrentUser,
+                                    PlayStatistics, Song, SongID, Source,
+                                    SourceID, User)
 
 _ALBUM = AlbumID(4644)
 _SONG = SongID(22488)
@@ -103,6 +105,22 @@ class TestListenUnauth(TestCase):
             self.assertEqual(source.name, None)
             self.assertEqual(source.name_romaji, 'ReLIFE')
             self.assertEqual(source.image, None)
+
+    def test_play_statistic(self):
+        statistic = self.listen.play_statistic(5)
+        self.assertIsInstance(statistic, list)
+        self.assertEqual(len(statistic), 5)
+        for playstatistic in statistic:
+            self.assertIsInstance(playstatistic, PlayStatistics)
+            self.assertIsInstance(playstatistic.created_at, datetime)
+            self.assertIsInstance(playstatistic.song, Song)
+
+    def test_search(self):
+        search_res = self.listen.search("nanahira", 5)
+        self.assertIsInstance(search_res, list)
+        self.assertEqual(len(search_res), 5)
+        for song in search_res:
+            self.assertIsInstance(song, Song)
 
 
 class TestListenAuth(TestCase):
@@ -219,6 +237,24 @@ class TestAioListenUnath(IsolatedAsyncioTestCase):
                 self.assertEqual(source.name, None)
                 self.assertEqual(source.name_romaji, 'ReLIFE')
                 self.assertEqual(source.image, None)
+
+    async def test_play_statistic(self):
+        async with self.listen as listen:
+            statistic = await listen.play_statistic(5)
+            self.assertIsInstance(statistic, list)
+            self.assertEqual(len(statistic), 5)
+            for playstatistic in statistic:
+                self.assertIsInstance(playstatistic, PlayStatistics)
+                self.assertIsInstance(playstatistic.created_at, datetime)
+                self.assertIsInstance(playstatistic.song, Song)
+
+    async def test_search(self):
+        async with self.listen as listen:
+            search_res = await listen.search("nanahira", 5)
+            self.assertIsInstance(search_res, list)
+            self.assertEqual(len(search_res), 5)
+            for song in search_res:
+                self.assertIsInstance(song, Song)
 
 
 class TestAioListenAuth(IsolatedAsyncioTestCase):

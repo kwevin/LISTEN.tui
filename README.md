@@ -60,14 +60,13 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 
 #### Linux
 
-Hold on, linux needs some time, idk why but a build is 230mb in size
-<!-- 1. Download the latest binary from releases
+1. Download the latest binary from releases `listentui`
 2. Move file to $PATH
-3. Run `listentui` -->
+3. Run `listentui`
 
 #### Windows
 
-1. Download the latest executable from releases
+1. Download the latest executable from releases `listentui.exe` or `listentui_portable.exe`
 2. Move file to %PATH%
 3. Run `listentui` in any terminal
 
@@ -75,9 +74,10 @@ Alternatively, double clicking the executable works too (although it will run it
 
 #### Universal
 
-1. Download the `listentui*.whl` file
-2. In a terminal, run `pip install` on the whl file
-3. Run `listentui`
+1. Have python version greater than or equal to `3.11.1`
+2. Download the `listentui*.whl` file
+3. In a terminal, run `pip install` on the whl file
+4. Run `listentui`
 
 # Usage Options
 
@@ -190,6 +190,17 @@ Requires:
 poetry shell
 poetry install
 poetry build
+poetry run python 'utils/build.py'
+```
+
+#### Install
+
+```sh
+poetry -vvv install --only-root --compile
 ```
 
 build files are located in `dist`
+
+# Credits
+
+- `yt-dlp`: For their pyinstaller build

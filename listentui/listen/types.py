@@ -445,6 +445,12 @@ class SystemFeed:
 
 
 @dataclass
+class PlayStatistics:
+    created_at: datetime
+    song: Song
+
+
+@dataclass
 class ListenWsData:
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:

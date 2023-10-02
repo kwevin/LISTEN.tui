@@ -4,9 +4,10 @@ version = "1.0.1"
 description = "a listen.moe tui application"
 authors = ["kwevin <kwevinnotdev@gmail.com>"]
 readme = "README.md"
+exclude = ["utils/build.py"]
 
 [tool.poetry.dependencies]
-python = "^3.11,<3.13"
+python = "^3.11,<3.12"
 gql = {extras = ["aiohttp", "requests"], version = "^3.4.1"}
 psutil = "^5.9.5"
 pypresence = "^4.3.0"
@@ -21,7 +22,7 @@ websockets = "^11.0.3"
 [tool.poetry.group.dev.dependencies]
 flake8 = "^6.1.0"
 isort = "^5.12.0"
-pyinstaller = "^6.0.0"
+pyinstaller = {url = "https://yt-dlp.github.io/Pyinstaller-Builds/x86_64/pyinstaller-5.8.0-py3-none-any.whl"}
 
 [build-system]
 requires = ["poetry-core"]

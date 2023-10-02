@@ -49,13 +49,20 @@ def threaded(func: Callable[..., Any]) -> Any:
     return wrapper
 
 
+def terminal_command(func: Callable[..., Any]) -> Any:
+    @wraps(func)
+    def wrapper(self: "TerminalPanel", command: str, args: Namespace) -> Any:
+        Thread(target=func, args=(self, command, args,), name="terminal command").start()
+    return wrapper
+
+
 @dataclass
 class CommandGroup:
     command: str
     output: RenderableType = field(default_factory=Text)
 
 
-class TerminalCommandHistoryHandler:  # idk how to name this
+class TerminalCommandHistoryHandler:
 
     def __init__(self):
         self._data: dict[CommandID, CommandGroup] = {}
@@ -90,9 +97,13 @@ class TerminalCommandHistoryHandler:  # idk how to name this
 
         return Group(*render_objects)
 
+    def clear(self) -> None:
+        self._data.clear()
+
 
 class TerminalPanel(ConsoleRenderable):
     def __init__(self, main: "Main") -> None:
+        self._log = logging.getLogger(__name__)
         self.main = main
         self.buffer: list[str] = []
         self.renderable = None
@@ -106,8 +117,6 @@ class TerminalPanel(ConsoleRenderable):
         self.scroll_offset: int = 0
         self.max_scroll_height: int = 0
         self.history = TerminalCommandHistoryHandler()
-
-        pass
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         width = options.max_width
@@ -151,111 +160,156 @@ class TerminalPanel(ConsoleRenderable):
         parser = ArgumentParser(prog="", exit_on_error=False, add_help=False)
         subparser = parser.add_subparsers()
 
+        # help
         help = subparser.add_parser('help',
                                     help="Print help for given command",
-                                    add_help=False)
+                                    add_help=False, exit_on_error=False)
         help.add_argument('cmd', nargs="?",
                           help="A command",
                           metavar="commmand", type=str)
         help.set_defaults(func=self.help)
 
+        # clear
         clear = subparser.add_parser('clear',
                                      help="Clear the console output",
-                                     add_help=False)
+                                     add_help=False, exit_on_error=False)
         clear.set_defaults(func=self.clear)
 
+        # reset
+        reset = subparser.add_parser('reset',
+                                     help="Reset console history, usefull when theres too much lag",
+                                     add_help=False, exit_on_error=False)
+        reset.set_defaults(func=self.reset)
+
+        # eval
         eval = subparser.add_parser('eval',
                                     help="Evaluate a python expression",
-                                    add_help=False)
+                                    add_help=False, exit_on_error=False)
         eval.add_argument('expr', nargs="+",
                           help="A python expression",
                           metavar="expression")
         eval.set_defaults(func=self.eval)
 
+        # search
+        search = subparser.add_parser('search',
+                                      help="Search for a song",
+                                      add_help=False, exit_on_error=False)
+        search.add_argument('term', nargs="+",
+                            help="What to search for",
+                            type=str)
+        search.add_argument('-c', '--count',
+                            help="The amount of result to return (default: 10)",
+                            dest='count',
+                            metavar="int", type=int)
+        search.add_argument('-f', '--favorite-only',
+                            dest='favorite',
+                            help="Search favorite only",
+                            action="store_true")
+        search.set_defaults(func=self.search)
+
+        # history
+        history = subparser.add_parser('history',
+                                       help="Show previously played history",
+                                       add_help=False, exit_on_error=False)
+        history.add_argument('-c', '--count',
+                             help="The amount of result to return (default: 10)",
+                             dest='count',
+                             metavar="int", type=int)
+        history.set_defaults(func=self.query_history)
+
+        # album
         album = subparser.add_parser('album',
                                      help="Fetch info on an album",
-                                     add_help=False)
+                                     add_help=False, exit_on_error=False)
         album.add_argument("id", nargs="?",
                            help="(optional), default to current song album",
                            metavar="AlbumID", type=int)
         album.set_defaults(func=self.album)
 
+        # artist
         artist = subparser.add_parser('artist',
                                       help="Fetch info on an artist",
-                                      add_help=False)
+                                      add_help=False, exit_on_error=False)
         artist.add_argument("id", nargs="?",
                             help="(optional), default to current song first artist",
                             metavar="AlbumID", type=int)
         artist.set_defaults(func=self.artist)
 
+        # song
         song = subparser.add_parser('song',
                                     help="Fetch info on a song",
-                                    add_help=False)
+                                    add_help=False, exit_on_error=False)
         song.add_argument("id", nargs="?",
                           help="(optional), default to current song album",
                           metavar="SongID", type=int)
         song.set_defaults(func=self.song)
 
+        # pv
         pv = subparser.add_parser('preview',
                                   aliases=['pv'],
                                   help="Preview a portion of the song audio",
-                                  add_help=False)
+                                  add_help=False, exit_on_error=False)
         pv.add_argument("id",
                         help="The id of the song",
                         metavar="SongID", type=int)
         pv.set_defaults(func=self.preview)
 
+        # user
         user = subparser.add_parser('user',
                                     help="Fetch info on an user",
-                                    add_help=False)
+                                    add_help=False, exit_on_error=False)
         user.add_argument('Username',
                           help="the username of the user",
                           metavar="Username", type=str)
         user.set_defaults(func=self.user)
 
+        # character
         character = subparser.add_parser('character',
                                          help="Fetch info on a character",
-                                         add_help=False)
+                                         add_help=False, exit_on_error=False)
         character.add_argument("id", nargs="?",
                                help="(optional), default to current song first character",
                                metavar="CharacterID", type=int)
         character.set_defaults(func=self.character)
 
+        # source
         source = subparser.add_parser('source',
                                       help="Fetch info on a source",
-                                      add_help=False)
+                                      add_help=False, exit_on_error=False)
         source.add_argument("id", nargs="?",
                             help="(optional), default to current song source",
                             metavar="SourceID", type=int)
         source.set_defaults(func=self.source)
 
+        # download
+        download = subparser.add_parser('download',
+                                        help="Download a song",
+                                        add_help=False, exit_on_error=False)
+        download.add_argument("id", nargs="?",
+                              help="(optional), default to current playing song",
+                              metavar="songID", type=int)
+        download.set_defaults(func=self.download)
+
         if self.main.logged_in:
+            # check favorite
             check_f = subparser.add_parser('check_favorite',
                                            aliases=['cf', 'check'],
                                            help="check if the song has been favorited",
-                                           add_help=False
-                                           )
+                                           add_help=False, exit_on_error=False)
             check_f.add_argument("id", nargs="?",
                                  help="(optional), default to current song",
                                  metavar="SongID", type=int)
             check_f.set_defaults(func=self.check_favorite)
 
+            # favorite
             fav = subparser.add_parser('favorite',
                                        aliases=['f'],
                                        help="Favorite a song",
-                                       add_help=False)
+                                       add_help=False, exit_on_error=False)
             fav.add_argument("id", nargs="?",
                              help="(optional), default to current song",
                              metavar="SongID", type=int)
             fav.set_defaults(func=self.favorite)
-
-        download = subparser.add_parser('download',
-                                        help="Download a song",
-                                        add_help=False)
-        download.add_argument("id", nargs="?",
-                              help="(optional), default to current playing song",
-                              metavar="songID", type=int)
-        download.set_defaults(func=self.download)
         return (parser, subparser)
 
     def ensure_cursor(self) -> None:
@@ -289,7 +343,7 @@ class TerminalPanel(ConsoleRenderable):
     def execute_buffer(self) -> None:
         command = "".join(self.buffer)
         # https://github.com/python/cpython/issues/103498
-        the_annoying_bunch = ('eval', 'preview', 'pv', 'user')
+        the_annoying_bunch = ('eval', 'preview', 'pv', 'user', 'search')
         if command.startswith(the_annoying_bunch):
             args = command.split()
             if args[0] not in the_annoying_bunch:
@@ -297,7 +351,7 @@ class TerminalPanel(ConsoleRenderable):
                 self.buffer.clear()
                 return
             if len(args) == 1:
-                self.history.add(command, self.tablelate(f"Requires an argument, run 'help {args[0]} for more info"))
+                self.history.add(command, self.tablelate(f"Requires an argument, run 'help {args[0]}' for more info"))
                 self.buffer.clear()
                 return
         try:
@@ -310,8 +364,8 @@ class TerminalPanel(ConsoleRenderable):
                 return
             self.buffer.clear()
             args.func(command, args)
-        except ArgumentError:
-            self.history.add(command, self.tablelate(f"Unknown command: {command}"))
+        except ArgumentError as e:
+            self.history.add(command, self.tablelate(e.message))
             self.buffer.clear()
 
     def tablelate(self, data: Union[list[Any], str, int, QueryType, RenderableType]) -> Table:
@@ -346,6 +400,9 @@ class TerminalPanel(ConsoleRenderable):
     def clear(self, _: str, __: Namespace):
         self.scroll_offset = self.max_scroll_height
 
+    def reset(self, _: str, __: Namespace):
+        self.history.clear()
+
     def eval(self, command: str, args: Namespace):
         cmd = args.expr
         try:
@@ -354,6 +411,7 @@ class TerminalPanel(ConsoleRenderable):
             res = pretty_repr(e)
         self.history.add(f"{command}", self.tablelate(res))
 
+    @terminal_command
     def album(self, command: str, args: Namespace):
         if args.id:
             album_id = args.id
@@ -370,6 +428,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def artist(self, command: str, args: Namespace):
         if args.id:
             artist_id = args.id
@@ -386,6 +445,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def song(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
@@ -398,9 +458,10 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def preview(self, command: str, args: Namespace):
         song_id = args.id
-        command_id = self.history.add(command, Spinner('dots', "querying song...", style=PRIMARY_COLOR))
+        command_id = self.history.add(command, Spinner('dots', "fetching song...", style=PRIMARY_COLOR))
         res = self.main.listen.song(song_id)
         if not res:
             self.history.update(command_id, self.tablelate("No song found"))
@@ -425,11 +486,16 @@ class TerminalPanel(ConsoleRenderable):
                     progress.advance(task)
                     time.sleep(1)
 
+            def error():
+                self.history.update(command_id, self.tablelate("Unable to play snipplet :("))
+                return
+
             if res.snippet:
-                self.main.player.preview(res.snippet, on_play=progress)
+                self.main.player.preview(res.snippet, on_play=progress, on_error=error)
             else:
                 self.history.update(command_id, self.tablelate("Song have no playable snippet"))
 
+    @terminal_command
     def user(self, command: str, args: Namespace):
         username = args.username
         command_id = self.history.add(command, Spinner('dots', "querying user...", style=PRIMARY_COLOR))
@@ -439,6 +505,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def character(self, command: str, args: Namespace):
         if args.id:
             character_id = args.id
@@ -455,6 +522,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def source(self, command: str, args: Namespace):
         if args.id:
             source_id = args.id
@@ -471,6 +539,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+    @terminal_command
     def check_favorite(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
@@ -486,6 +555,7 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(f"song {song_id}: {res}"))
 
+    @terminal_command
     def favorite(self, command: str, args: Namespace):
         romaji_first = self.main.config.display.romaji_first
         sep = self.main.config.display.separator
@@ -525,7 +595,68 @@ class TerminalPanel(ConsoleRenderable):
             Thread(target=self.main.listen.favorite_song, args=(song_id, )).start()
             self.main.user_panel.update()
 
-    @threaded
+    @terminal_command
+    def search(self, command: str, args: Namespace):
+        term = " ".join(args.term)
+        count = args.count or 10
+        favorite_only = args.favorite
+        romaji_first = self.main.config.display.romaji_first
+        sep = self.main.config.display.separator
+        table = Table(expand=False)
+        table.add_column("id", ratio=2)
+        table.add_column("song", ratio=6)
+        table.add_column("artist", ratio=2)
+
+        command_id = self.history.add(command, Spinner('dots', "searching songs...", style=PRIMARY_COLOR))
+        res = self.main.listen.search(term, count, favorite_only)
+
+        if len(res) == 0:
+            self.history.update(command_id, self.tablelate("Nothing to show :("))
+            return
+
+        for song in res:
+            if romaji_first:
+                title = song.title_romaji or song.title
+            else:
+                title = song.title
+            song_title = Text()
+            if favorite_only:
+                song_title.append(" ", Style(color=PRIMARY_COLOR, bold=True))
+            song_title.append(f"{title}")
+            table.add_row(f"{song.id}",
+                          song_title,
+                          f"{song.format_artists(1, False, romaji_first, sep)}")
+
+        self.history.update(command_id, self.tablelate(table))
+
+    @terminal_command
+    def query_history(self, command: str, args: Namespace):
+        count = args.count or 10
+        romaji_first = self.main.config.display.romaji_first
+        sep = self.main.config.display.separator
+        table = Table(expand=False)
+        table.add_column("id", ratio=2)
+        table.add_column("song", ratio=4)
+        table.add_column("artist", ratio=2)
+        table.add_column("played at", ratio=2)
+
+        command_id = self.history.add(command, Spinner('dots', "fetching songs history...", style=PRIMARY_COLOR))
+        res = self.main.listen.play_statistic(count)
+
+        for statistic in res:
+            song = statistic.song
+            if romaji_first:
+                title = song.title_romaji or song.title
+            else:
+                title = song.title
+            table.add_row(f"{song.id}",
+                          f"{title}",
+                          f"{song.format_artists(1, False, romaji_first, sep)}",
+                          f"{statistic.created_at.strftime('%d/%m/%Y, %H:%M:%S')}")
+
+        self.history.update(command_id, self.tablelate(table))
+
+    @terminal_command
     def download(self, command: str, args: Namespace):
         t = Table.grid()
         e = Progress()

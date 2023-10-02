@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import time
 from base64 import b64decode
@@ -16,8 +17,8 @@ from gql.transport.requests import RequestsHTTPTransport
 from graphql import DocumentNode
 
 from .types import (Album, AlbumID, Artist, ArtistID, Character, CharacterID,
-                    CurrentUser, Link, Song, SongID, Source, SourceID,
-                    SystemFeed, User)
+                    CurrentUser, Link, PlayStatistics, Song, SongID, Source,
+                    SourceID, SystemFeed, User)
 
 
 class NotAuthenticatedException(Exception):
@@ -53,6 +54,8 @@ class Queries:
     check_favorite: DocumentNode
     song: DocumentNode
     source: DocumentNode
+    play_statistic: DocumentNode
+    search: DocumentNode
 
 
 class BaseClient:
@@ -204,6 +207,31 @@ class BaseClient:
                 }
             }
         """
+        play_statistic = Template("""
+            query play_statistic($count: Int!, $offset: Int) {
+                playStatistics(count: $count, offset: $offset) {
+                    songs {
+                        createdAt
+                        song {
+                            ${song}
+                        }
+                        requester {
+                            ${user}
+                        }
+                    }
+                }
+            }
+        """).safe_substitute(base)
+        search = Template("""
+            query search($term: ID!, $favoritesOnly: Boolean) {
+                search(query: $term, favoritesOnly: $favoritesOnly) {
+                    ... on Song {
+                        ${song}
+                    }
+                }
+            }
+        """).safe_substitute(base)
+
         return Queries(
             login=gql(login),
             user=gql(user),
@@ -213,7 +241,9 @@ class BaseClient:
             check_favorite=gql(check_favorite),
             favorite_song=gql(favorite_song),
             song=gql(song),
-            source=gql(source)
+            source=gql(source),
+            play_statistic=gql(play_statistic),
+            search=gql(search)
         )
     _QUERIES = _build_queries()
 
@@ -418,6 +448,26 @@ class AIOListen(BaseClient):
             feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
         )
 
+    async def play_statistic(self, count: Optional[int] = 50, offset: Optional[int] = 0) -> list[PlayStatistics]:
+        query = self.queries.play_statistic
+        params = {'count': count, 'offset': offset}
+        res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
+        songs = res['playStatistics']['songs']
+        return [PlayStatistics(
+            created_at=datetime.datetime.fromtimestamp(round(int(song['createdAt']) / 1000)),
+            song=Song.from_data(song['song'])
+        ) for song in songs]
+
+    async def search(self, term: str, count: Optional[int] = None, favorite_only: Optional[bool] = False) -> list[Song]:
+        query = self.queries.search
+        params = {'term': term, 'favoritesOnly': favorite_only}
+        res = await self._session.execute(document=query, variable_values=params)  # pyright: ignore
+        data = [Song.from_data(data) for data in res['search']]
+
+        if count:
+            return data[:count]
+        return data
+
     @requires_auth
     async def check_favorite(self, song: Union[SongID, int]) -> bool:
         query = self.queries.check_favorite
@@ -605,6 +655,28 @@ class Listen(BaseClient):
                 feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
             )
 
+    def play_statistic(self, count: Optional[int] = 50, offset: Optional[int] = 0) -> list[PlayStatistics]:
+        with self._lock:
+            query = self.queries.play_statistic
+            params = {'count': count, 'offset': offset}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            songs = res['playStatistics']['songs']
+            return [PlayStatistics(
+                created_at=datetime.datetime.fromtimestamp(round(int(song['createdAt']) / 1000)),
+                song=Song.from_data(song['song'])
+            ) for song in songs]
+
+    def search(self, term: str, count: Optional[int] = None, favorite_only: Optional[bool] = False) -> list[Song]:
+        with self._lock:
+            query = self.queries.search
+            params = {'term': term, 'favoritesOnly': favorite_only}
+            res = self._client.execute(document=query, variable_values=params)  # pyright: ignore
+            data = [Song.from_data(data) for data in res['search']]
+
+            if count:
+                return data[:count]
+            return data
+
     @requires_auth_sync
     def check_favorite(self, song: Union[SongID, int]) -> bool:
         with self._lock:
@@ -627,8 +699,10 @@ class Listen(BaseClient):
 
 
 if __name__ == "__main__":
+    from rich.pretty import pprint
+
     async def main():
         async with AIOListen() as listen:
-            print(await listen.album(1))
+            pprint(await listen.search("nanahira", 2, favorite_only=True))
     loop = asyncio.new_event_loop()
     loop.run_until_complete(main())
