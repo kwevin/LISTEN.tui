@@ -104,7 +104,7 @@ listentui [OPTIONS]
 
 # Configuration
 
-Configuration is done through `config.toml`
+Configuration is done through `config.toml`. You can find the default configuration here at [config.toml](https://github.com/kwevin/Listen.TUI/blob/main/config.toml)
 
 Base on your distro, this is located at:
 
@@ -142,12 +142,23 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `use_fallback`: use a fallback image if there isnt one
 - `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for [LISTEN.moe](https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png) icon)
 - `use_artist`: use the artist image instead if no album image is found
-- `detail`: the title of the presence
-- `state`: the subtitle of the presence
-- `large_text`: the text that is shown when hovering over the large image
-- `small_text`: the text that is shown when hovering over the small image
+- `detail`: the title of the presence, can take in `${keys}`
+- `state`: the subtitle of the presence, can take in `${keys}`
+- `large_text`: the text that is shown when hovering over the large image, can take in `${keys}`
+- `small_text`: the text that is shown when hovering over the small image, can take in `${keys}`
 - `show_time_left`: show the remaining time (if applicable) for the current playing song
 - `show_small_image`: show the artist as a small image (if applicable)
+
+Available `${keys}` includes:
+
+- `id`: id of the current song
+- `title`: title of the current song
+- `source`: source of the current song, note: this is wrapped in brackets `"[source]"`
+- `source_image`: name of the source image
+- `artist`: artists of the current song
+- `artist_image`: name of the first artist image
+- `album`: album name of the current song
+- `album_image`: name of the album image
 
 #### Player
 

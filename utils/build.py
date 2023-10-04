@@ -10,6 +10,8 @@ from PyInstaller.__main__ import run as pyinstaller
 from rich.console import Console
 
 
+# on way is to have a __main__portable__.py to signify that its a portable version so that config can respect
+# portability
 def main():
     base = [
         '--noconfirm',
