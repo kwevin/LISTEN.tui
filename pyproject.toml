@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "listentui"
-version = "1.0.1"
+version = "1.1.0"
 description = "a listen.moe tui application"
 authors = ["kwevin <kwevinnotdev@gmail.com>"]
 readme = "README.md"
