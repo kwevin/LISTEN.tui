@@ -455,7 +455,7 @@ class ListenWsData:
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         """
-        A dataclass representation of listen.moe websocket data
+        A dataclass representation of LISTEN.moe websocket data
 
         Args:
             data `dict`: The websocket data
