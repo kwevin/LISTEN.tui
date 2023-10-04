@@ -28,7 +28,7 @@ jobs:
                 
                 if [[ -z "${{ inputs.tag_name }}" ]]
                 then
-                    echo "VERSION_TAG=${poetry version -s}" >> $GITHUB_ENV
+                    echo "VERSION_TAG=$(poetry version -s)" >> $GITHUB_ENV
                 else
                     echo "VERSION_TAG=${{ inputs.tag_name }}" >> $GITHUB_ENV
                 fi
