@@ -402,6 +402,7 @@ class TerminalPanel(ConsoleRenderable):
 
     def reset(self, _: str, __: Namespace):
         self.history.clear()
+        self.scroll_offset = 0
 
     def eval(self, command: str, args: Namespace):
         cmd = args.expr
