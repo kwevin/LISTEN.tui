@@ -50,7 +50,15 @@
 
 The program uses mpv to playback audio and as such requires `libmpv` to be installed on your system.
 
-For Windows user, regular mpv player binaries do not contain `libmpv`, refer to this [issue](https://github.com/jaseg/python-mpv/issues/60#issuecomment-352719773) to resolve the problem.
+For Linux user. Install `libmpv` through your favorite package manager. You may also want to try `mpv-devel` or `mpv-libs` if the program can't find `libmpv`.
+
+**If you're using the non-portable version.**
+
+For Windows user, regular mpv player binaries do not contain `libmpv`.
+
+1. Download `libmpv` at [libmpv](https://sourceforge.net/projects/mpv-player-windows/files/libmpv/)
+2. Find `libmpv.dll` and rename it to `mpv-2.dll`
+3. Add `mpv-2.dll into %PATH%`
 
 - `A nerd font`
 
@@ -70,7 +78,7 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 2. Move file to %PATH%
 3. Run `listentui` in any terminal
 
-Alternatively, double clicking the executable works too (although it will run it under cmd.exe)
+Alternatively, double clicking the executable works too (although some icons might be missing)
 
 #### Universal
 
@@ -134,6 +142,12 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `use_fallback`: use a fallback image if there isnt one
 - `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for [LISTEN.moe](https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png) icon)
 - `use_artist`: use the artist image instead if no album image is found
+- `detail`: the title of the presence
+- `state`: the subtitle of the presence
+- `large_text`: the text that is shown when hovering over the large image
+- `small_text`: the text that is shown when hovering over the small image
+- `show_time_left`: show the remaining time (if applicable) for the current playing song
+- `show_small_image`: show the artist as a small image (if applicable)
 
 #### Player
 
@@ -150,11 +164,14 @@ The terminal allows user to query different information through LISTEN.moe
 ## Usage
 
 ```txt
-{help,clear,eval,album,artist,song,preview,pv,user,character,source,check_favorite,cf,check,favorite,f,download}
+{help,clear,reset,eval,search,history,album,artist,song,preview,pv,user,character,source,download,check_favorite,cf,check,favorite,f}
 
 help                        Print help for given command
-clear                       Clear the console OUtPUt
+clear                       Clear the console output
+reset                       Reset console history, useful when there's too much lag, see issues#1
 eval                        Evaluate a python expression
+search                      Search for a song
+history                     Show previously played history
 album                       Fetch info on an album
 artist                      Fetch info on an artist
 song                        Fetch info on a song
@@ -185,6 +202,7 @@ Requires:
 
 - `python3.11.1^`
 - `poetry`
+- `mpv-2.dll` in the root directory
 
 ```sh
 poetry shell
@@ -194,6 +212,8 @@ poetry run python 'utils/build.py'
 ```
 
 #### Install
+
+This is to install the project as a pip library, allowing the program to be called from any terminal with `listentui`
 
 ```sh
 poetry -vvv install --only-root --compile
