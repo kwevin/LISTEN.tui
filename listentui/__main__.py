@@ -15,7 +15,7 @@ from listentui.config import Config
 from listentui.log import Logger
 from listentui.main import Main
 
-parser = ArgumentParser(prog="Listen.tui", description="A tui for listen.moe")
+parser = ArgumentParser(prog="Listen.tui", description="A tui for LISTEN.moe")
 parser.add_argument("--config", "-c",
                     dest="config",
                     action="store",

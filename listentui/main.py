@@ -925,7 +925,7 @@ class HeadingPanel(ConsoleRenderable):
         pass
 
     def __rich_console__(self, _: Console, __: ConsoleOptions) -> RenderResult:
-        yield Panel(Text(f'Listen.Moe (󰋋 {self.listener})', justify='center'))
+        yield Panel(Text(f'LISTEN.moe (󰋋 {self.listener})', justify='center'))
 
     def update(self, listener: int) -> None:
         self.listener = listener

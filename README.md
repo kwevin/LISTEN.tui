@@ -1,6 +1,6 @@
 # <div align="center">ListenTUI</div>
 
-<div align="center">A listen.moe TUI application</div>
+<div align="center">A LISTEN.moe TUI application</div>
 
 ![image of application](.assets/main.png)
 
@@ -105,8 +105,8 @@ Base on your distro, this is located at:
 
 #### System
 
-- `username`: username used to log into listen.moe
-- `password`: password used to log into listen.moe
+- `username`: username used to log into LISTEN.moe
+- `password`: password used to log into LISTEN.moe
 - `instance_lock`: limit the running instance to one
 
 #### Keybind
@@ -132,7 +132,7 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `enable_rpc`: enable rich presence integration
 - `default_placeholder`: placeholder for when text field falls below the two character limit specified by discord
 - `use_fallback`: use a fallback image if there isnt one
-- `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for [listen.moe](https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png) icon)
+- `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for [LISTEN.moe](https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png) icon)
 - `use_artist`: use the artist image instead if no album image is found
 
 #### Player
@@ -145,7 +145,7 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 
 ![image of terminal](.assets/terminal.png)
 
-The terminal allows user to query different information through listen.moe
+The terminal allows user to query different information through LISTEN.moe
 
 ## Usage
 
