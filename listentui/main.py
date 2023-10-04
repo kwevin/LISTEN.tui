@@ -70,7 +70,7 @@ class TerminalCommandHistoryHandler:
 
     @property
     def history_count(self):
-        return self._command_id_count
+        return len(self._data)
 
     def add(self, command: str, output: Optional[RenderableType] = None) -> CommandID:
         command_id = CommandID(self._command_id_count)
@@ -108,10 +108,6 @@ class TerminalPanel(ConsoleRenderable):
         self.buffer: list[str] = []
         self.renderable = None
         self.panel = None
-        self.layout = Layout()
-        self.layout.split_column(
-            Layout(name='console'),
-        )
         self.parser, self.subparser = self.build_parser()
         self.height: int = 0
         self.scroll_offset: int = 0
@@ -127,8 +123,8 @@ class TerminalPanel(ConsoleRenderable):
         render_list = capture.get().split('\n')
         self.max_scroll_height = len(render_list) - 2
         to_render = render_list[self.scroll_offset:]
-        self.layout['console'].update(Text.from_ansi("\n".join(to_render), end="", no_wrap=True))
-        yield Panel(self.layout, height=self.height, title="Terminal")
+        text = Text.from_ansi("\n".join(to_render), end="", no_wrap=True)
+        yield Panel(text, height=self.height, title="Terminal")
 
     def __call__(self, panel: Layout) -> Self:
         self.panel = panel
