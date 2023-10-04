@@ -123,10 +123,10 @@ class TerminalPanel(ConsoleRenderable):
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         self.height = options.max_height
-        render_list = self.history.render(options, self.scroll_offset)
-        self.max_scroll_height = self.history.lines_length - 2
+        segments = self.history.render(options, self.scroll_offset)
+        self.max_scroll_height = self.history.lines_length
         table = Table.grid()
-        table.add_row(Segments(render_list))
+        table.add_row(Segments(segments))
         table.add_row(self.input_field())
         yield Panel(table, height=self.height, title="Terminal")
 
