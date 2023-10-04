@@ -9,7 +9,8 @@ from math import ceil
 from os import _exit  # pyright: ignore
 from threading import Thread
 from types import TracebackType
-from typing import Any, Callable, NewType, Optional, Self, Type, Union
+from typing import (Any, Callable, Iterable, NewType, Optional, Self, Type,
+                    Union)
 
 from graphql import Source
 from psutil import pid_exists
@@ -23,6 +24,7 @@ from rich.panel import Panel
 from rich.pretty import pretty_repr
 from rich.progress import (BarColumn, MofNCompleteColumn, Progress,
                            SpinnerColumn, Task, TextColumn)
+from rich.segment import Segment, Segments
 from rich.spinner import Spinner
 from rich.style import Style
 from rich.table import Table
@@ -67,10 +69,28 @@ class TerminalCommandHistoryHandler:
     def __init__(self):
         self._data: dict[CommandID, CommandGroup] = {}
         self._command_id_count = 0
+        self.lines_length = 0
 
     @property
     def history_count(self):
         return len(self._data)
+
+    def render(self, options: ConsoleOptions, start: int) -> Iterable[Segment]:
+        render_objects: list[RenderableType] = []
+        for group in self._data.values():
+            table = Table.grid()
+            prompt = Text()
+            prompt.append("> ", style=PRIMARY_COLOR)
+            prompt.append(group.command)
+            table.add_row(prompt)
+            table.add_row(group.output)
+            render_objects.append(table)
+
+        console = Console(width=options.max_width - 4)
+        lines = console.render_lines(Group(*render_objects), new_lines=True)
+        self.lines_length = len(lines)
+        for line in lines[start:start + options.max_height]:
+            yield from line
 
     def add(self, command: str, output: Optional[RenderableType] = None) -> CommandID:
         command_id = CommandID(self._command_id_count)
@@ -83,19 +103,6 @@ class TerminalCommandHistoryHandler:
 
     def update(self, id: CommandID, result: RenderableType) -> None:
         self._data[id].output = result
-
-    def render(self) -> Group:
-        render_objects: list[RenderableType] = []
-        for group in self._data.values():
-            table = Table.grid()
-            prompt = Text()
-            prompt.append("> ", style=PRIMARY_COLOR)
-            prompt.append(group.command)
-            table.add_row(prompt)
-            table.add_row(group.output)
-            render_objects.append(table)
-
-        return Group(*render_objects)
 
     def clear(self) -> None:
         self._data.clear()
@@ -115,16 +122,13 @@ class TerminalPanel(ConsoleRenderable):
         self.history = TerminalCommandHistoryHandler()
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
-        width = options.max_width
         self.height = options.max_height
-        console = Console(width=width - 4, height=self.height - 2)
-        with console.capture() as capture:
-            console.print(self.render())
-        render_list = capture.get().split('\n')
-        self.max_scroll_height = len(render_list) - 2
-        to_render = render_list[self.scroll_offset:]
-        text = Text.from_ansi("\n".join(to_render), end="", no_wrap=True)
-        yield Panel(text, height=self.height, title="Terminal")
+        render_list = self.history.render(options, self.scroll_offset)
+        self.max_scroll_height = self.history.lines_length - 2
+        table = Table.grid()
+        table.add_row(Segments(render_list))
+        table.add_row(self.input_field())
+        yield Panel(table, height=self.height, title="Terminal")
 
     def __call__(self, panel: Layout) -> Self:
         self.panel = panel
@@ -142,10 +146,8 @@ class TerminalPanel(ConsoleRenderable):
         if self.panel and self.renderable:
             self.panel.update(self.renderable)
 
-    def render(self) -> Table:
+    def input_field(self) -> Table:
         table = Table.grid()
-        if self.history.history_count != 0:
-            table.add_row(self.history.render())
         field = Text()
         field.append("> ", style=PRIMARY_COLOR)
         field.append(f'{"".join(self.buffer)}|')
