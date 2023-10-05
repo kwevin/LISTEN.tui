@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import time
-from typing import Any, Literal, NewType, Optional, Self, Type
+from typing import Any, Literal, NewType, Optional, Self, Type, Union
 
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.table import Table
@@ -312,7 +312,8 @@ class Song:
 
     def format_artists(self, count: Optional[int] = None,
                        show_character: bool = True,
-                       romaji_first: bool = True, sep: str = ', ') -> str | None:
+                       romaji_first: bool = True, sep: str = ', ',
+                       embed_link: bool = False) -> str | None:
         if not self.artists:
             return None
         name = None
@@ -333,21 +334,36 @@ class Song:
                 if self.characters:
                     for character in self.characters:
                         character_map[character.id] = character
-                if self.characters and artist.character:
-                    for character in artist.character:
-                        if (char := character_map.get(character.id)):
-                            if romaji_first:
-                                char_name = char.name_romaji if char.name_romaji else char.name
-                            else:
-                                char_name = char.name
 
-                    if name and char_name:
-                        lst_string.append(f'{char_name} (CV: {name})')
+                if self.characters and artist.character:
+                    char = None
+                    for character in artist.character:
+                        char = character_map.get(character.id)
+                        if char:
+                            break
+
+                    if name and char:
+                        if romaji_first:
+                            char_name = char.name_romaji if char.name_romaji else char.name
+                        else:
+                            char_name = char.name
+                        if embed_link:
+                            e = f'[link={char.link}]{char_name}[/link]'
+                            k = f'(CV: [link={artist.link}]{name}[/link])'
+                            lst_string.append(f'{e} {k}')
+                        else:
+                            lst_string.append(f'{char_name} (CV: {name})')
                 elif name:
-                    lst_string.append(name)
+                    if embed_link:
+                        lst_string.append(f'[link={artist.link}]{name}[/link]')
+                    else:
+                        lst_string.append(name)
             else:
                 if name:
-                    lst_string.append(name)
+                    if embed_link:
+                        lst_string.append(f'[link={artist.link}]{name}[/link]')
+                    else:
+                        lst_string.append(name)
 
         return f"{sep}".join(lst_string)
 
@@ -358,23 +374,25 @@ class Song:
             return self.artists[0].image.url
         return None
 
-    def format_album(self, romaji_first: bool = True) -> str | None:
-        if not self.album:
-            return None
+    def _format(self, albs: Union[Album, Source],
+                romaji_first: bool = True, embed_link: bool = False) -> str | None:
         if romaji_first:
-            name = self.album.name_romaji if self.album.name_romaji else self.album.name
+            name = albs.name_romaji if albs.name_romaji else albs.name
         else:
-            name = self.album.name
+            name = albs.name
+        if embed_link:
+            return f'[link={albs.link}]{name}[/link]'
         return name
 
-    def format_source(self, romaji_first: bool = True) -> str | None:
+    def format_album(self, romaji_first: bool = True, embed_link: bool = False) -> str | None:
+        if not self.album:
+            return None
+        return self._format(self.album, romaji_first, embed_link)
+
+    def format_source(self, romaji_first: bool = True, embed_link: bool = False) -> str | None:
         if not self.source:
             return None
-        if romaji_first:
-            name = self.source.name_romaji if self.source.name_romaji else self.source.name
-        else:
-            name = self.source.name
-        return name
+        return self._format(self.source, romaji_first, embed_link)
 
     def album_image(self):
         if not self.album:

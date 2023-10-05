@@ -856,11 +856,12 @@ class InfoPanel(ConsoleRenderable):
 
         table.add_row("Title", title)
         if song.artists:
-            table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first, sep=self.separator))
+            table.add_row("Artists", song.format_artists(romaji_first=self.romaji_first,
+                                                         sep=self.separator, embed_link=True))
         if song.source:
-            table.add_row("Source", song.format_source(self.romaji_first))
+            table.add_row("Source", song.format_source(self.romaji_first, embed_link=True))
         if song.album:
-            table.add_row("Album", song.format_album(self.romaji_first))
+            table.add_row("Album", song.format_album(self.romaji_first, embed_link=True))
         table.add_row("Duration", self.duration_progress)
         return table
 
