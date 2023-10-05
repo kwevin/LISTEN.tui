@@ -22,13 +22,14 @@ jobs:
 
             - name: Build
               run: |
+                poetry build
                 poetry run python ./utils/build.py
             
             - name: Upload Artefacts
               uses: actions/upload-artifact@v3
               with: 
                 path: |
-                    dist/listentui
+                    dist/*
 
     build_window:
         name: Build Window
