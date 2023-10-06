@@ -69,7 +69,7 @@ class TerminalCommandHistoryHandler:
     def __init__(self):
         self._data: dict[CommandID, CommandGroup] = {}
         self._command_id_count = 0
-        self.lines_length = 0
+        self.lines_rendered = 0
 
     @property
     def history_count(self):
@@ -88,7 +88,7 @@ class TerminalCommandHistoryHandler:
 
         console = Console(width=options.max_width - 4)
         lines = console.render_lines(Group(*render_objects), new_lines=True)
-        self.lines_length = len(lines)
+        self.lines_rendered = len(lines)
         for line in lines[start:start + options.max_height]:
             yield from line
 
@@ -123,10 +123,12 @@ class TerminalPanel(ConsoleRenderable):
 
     def __rich_console__(self, console: Console, options: ConsoleOptions) -> RenderResult:
         self.height = options.max_height
-        segments = self.history.render(options, self.scroll_offset)
-        self.max_scroll_height = self.history.lines_length
+        segments = Segments(self.history.render(options, self.scroll_offset))
+        self.max_scroll_height = self.history.lines_rendered
         table = Table.grid()
-        table.add_row(Segments(segments))
+        if self.history.history_count != 0:
+            if self.scroll_offset != self.max_scroll_height:
+                table.add_row(segments)
         table.add_row(self.input_field())
         yield Panel(table, height=self.height, title="Terminal")
 
