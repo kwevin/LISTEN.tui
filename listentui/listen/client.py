@@ -326,7 +326,7 @@ class AIOListen(BaseClient):
             favorites=user['favorites']['count'],
             uploads=user['uploads']['count'],
             requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
+            feeds=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
             token=token
         ))
 
@@ -359,7 +359,7 @@ class AIOListen(BaseClient):
                                  user.favorites,
                                  user.uploads,
                                  user.requests,
-                                 user.feed, current_user.token)
+                                 user.feeds, current_user.token)
         return self._user
 
     # queries
@@ -445,7 +445,7 @@ class AIOListen(BaseClient):
             favorites=user['favorites']['count'],
             uploads=user['uploads']['count'],
             requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
+            feeds=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
         )
 
     async def play_statistic(self, count: Optional[int] = 50, offset: Optional[int] = 0) -> list[PlayStatistics]:
@@ -535,7 +535,7 @@ class Listen(BaseClient):
             favorites=user['favorites']['count'],
             uploads=user['uploads']['count'],
             requests=user['requests']['count'],
-            feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
+            feeds=[SystemFeed.from_data(feed) for feed in user['systemFeed']],
             token=token
         ))
 
@@ -558,7 +558,7 @@ class Listen(BaseClient):
                                  user.favorites,
                                  user.uploads,
                                  user.requests,
-                                 user.feed, current_user.token)
+                                 user.feeds, current_user.token)
         return self._user
 
     # queries
@@ -652,7 +652,7 @@ class Listen(BaseClient):
                 favorites=user['favorites']['count'],
                 uploads=user['uploads']['count'],
                 requests=user['requests']['count'],
-                feed=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
+                feeds=[SystemFeed.from_data(feed) for feed in user['systemFeed']]
             )
 
     def play_statistic(self, count: Optional[int] = 50, offset: Optional[int] = 0) -> list[PlayStatistics]:

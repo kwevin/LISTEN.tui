@@ -256,9 +256,13 @@ class TerminalPanel(ConsoleRenderable):
         user = subparser.add_parser('user',
                                     help="Fetch info on an user",
                                     add_help=False, exit_on_error=False)
-        user.add_argument('Username',
+        user.add_argument('username',
                           help="the username of the user",
                           metavar="Username", type=str)
+        user.add_argument('-c', '--count',
+                          help="The amount of user feed to return (default: 10)",
+                          dest='count',
+                          metavar="int", type=int)
         user.set_defaults(func=self.user)
 
         # character
@@ -467,18 +471,11 @@ class TerminalPanel(ConsoleRenderable):
         else:
             def progress():
                 romaji_first = self.main.config.display.romaji_first
-                if res:
-                    if romaji_first:
-                        title = res.title_romaji or res.title
-                    else:
-                        title = res.title
-                else:
-                    title = None
                 progress = Progress(SpinnerColumn(),
                                     TextColumn("{task.description}"),
                                     BarColumn(),
                                     MofNTimeCompleteColumn())
-                task = progress.add_task(f"Playing {title}", total=15)
+                task = progress.add_task(f"Playing {res.format_title(romaji_first)}", total=15)
                 self.history.update(command_id, self.tablelate(progress))
                 time.sleep(1)
                 while not progress.finished:
@@ -496,13 +493,43 @@ class TerminalPanel(ConsoleRenderable):
 
     @terminal_command
     def user(self, command: str, args: Namespace):
+        romaji_first = self.main.config.display.romaji_first
+        sep = self.main.config.display.separator
         username = args.username
+        count = args.count or 10
         command_id = self.history.add(command, Spinner('dots', "querying user...", style=PRIMARY_COLOR))
-        res = self.main.listen.user(username)
+        res = self.main.listen.user(username, system_count=count)
         if not res:
             self.history.update(command_id, self.tablelate("No user found"))
         else:
-            self.history.update(command_id, self.tablelate(res))
+            table = Table(show_header=False)
+            table.add_column(ratio=2)
+            table.add_column(ratio=8)
+            table.add_row("uuid", Text(res.uuid))
+            table.add_row("username", Text(res.username))
+            table.add_row("display_name", Text(res.display_name))
+            if res.bio:
+                e = Table(show_header=False)
+                e.add_row(res.bio)
+                table.add_row("bio", e)
+            table.add_row("favorites", Text(str(res.favorites)))
+            table.add_row("uploads", Text(str(res.uploads)))
+            table.add_row("requests", Text(str(res.requests)))
+
+            feed_table = Table(show_header=False)
+            for feed in res.feeds:
+                if not feed.song:
+                    continue
+                feed_text = Text(overflow='fold')
+                feed_text.append(f'{feed.activity} ')
+                feed_text.append(f'{feed.song.format_title(romaji_first)} ')
+                feed_text.append('by ', style=PRIMARY_COLOR)
+                artist = feed.song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
+                feed_text.append(f'{artist}')
+                feed_table.add_row(feed_text)
+
+            table.add_row("feeds", self.tablelate(feed_table))
+            self.history.update(command_id, self.tablelate(table))
 
     @terminal_command
     def character(self, command: str, args: Namespace):
@@ -565,10 +592,7 @@ class TerminalPanel(ConsoleRenderable):
             self.main.favorite_song()
             status = self.main.current_song.is_favorited
             song_id = self.main.current_song.id
-            if romaji_first:
-                title = self.main.current_song.title_romaji or self.main.current_song.title
-            else:
-                title = self.main.current_song.title
+            title = self.main.current_song.format_title(romaji_first)
             artist = self.main.current_song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
             if status:
                 self.history.add(command, self.tablelate(f"Favoriting {title} by {artist}"))
@@ -581,10 +605,7 @@ class TerminalPanel(ConsoleRenderable):
         if not song:
             self.history.update(command_id, self.tablelate("No song found"))
         else:
-            if romaji_first:
-                title = song.title_romaji or song.title
-            else:
-                title = song.title
+            title = song.format_title(romaji_first)
             artist = song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
             status = self.main.listen.check_favorite(song_id)
             if not status:
@@ -614,14 +635,10 @@ class TerminalPanel(ConsoleRenderable):
             return
 
         for song in res:
-            if romaji_first:
-                title = song.title_romaji or song.title
-            else:
-                title = song.title
             song_title = Text()
             if favorite_only:
                 song_title.append(" ", Style(color=PRIMARY_COLOR, bold=True))
-            song_title.append(f"{title}")
+            song_title.append(f"{song.format_title(romaji_first)}")
             table.add_row(f"{song.id}",
                           song_title,
                           f"{song.format_artists(1, False, romaji_first, sep)}")
@@ -644,12 +661,8 @@ class TerminalPanel(ConsoleRenderable):
 
         for statistic in res:
             song = statistic.song
-            if romaji_first:
-                title = song.title_romaji or song.title
-            else:
-                title = song.title
             table.add_row(f"{song.id}",
-                          f"{title}",
+                          f"{song.format_title(romaji_first)}",
                           f"{song.format_artists(1, False, romaji_first, sep)}",
                           f"{statistic.created_at.strftime('%d/%m/%Y, %H:%M:%S')}")
 
@@ -752,10 +765,12 @@ class UserPanel(ConsoleRenderable):
         current_height = 0
         total_rendered = 0
         feed_table = Table(expand=True, box=None, padding=(0, 0, 1, 0))
-        for feed in self.user.feed:
+        for feed in self.user.feeds:
+            if not feed.song:
+                continue
             feed_text = Text(overflow='fold')
-            feed_text.append('Favorited ')
-            feed_text.append(f'{feed.song.title} ')
+            feed_text.append(f'{feed.activity} ')
+            feed_text.append(f'{feed.song.format_title(self.romaji_first)} ')
             feed_text.append('by ', style=PRIMARY_COLOR)
             artist = feed.song.format_artists(1, show_character=False, romaji_first=self.romaji_first, sep=self.sep)
             feed_text.append(f'{artist}')

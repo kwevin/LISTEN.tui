@@ -17,6 +17,7 @@ rich = "^13.5.2"
 tomli = "^2.0.1"
 tomli-w = "^1.0.0"
 websockets = "^11.0.3"
+markdownify = "^0.11.6"
 
 
 [tool.poetry.group.dev.dependencies]

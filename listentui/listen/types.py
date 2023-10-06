@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from time import time
 from typing import Any, Literal, NewType, Optional, Self, Type, Union
 
+from markdownify import markdownify  # type: ignore
 from rich.console import Console, ConsoleOptions, RenderResult
+from rich.markdown import Markdown
 from rich.table import Table
 from rich.text import Text
 
@@ -58,15 +60,16 @@ class User:
     uuid: str
     username: str
     display_name: str
-    bio: str | None
+    bio: Markdown | None
     favorites: int
     uploads: int
     requests: int
-    feed: list["SystemFeed"]
+    feeds: list["SystemFeed"]
     link: str = field(init=False)
 
     def __post_init__(self):
         self.link = f'https://listen.moe/u/{self.username}'
+        self.bio = Markdown(markdownify(self.bio))  # type: ignore
 
 
 @dataclass
@@ -394,6 +397,12 @@ class Song:
             return None
         return self._format(self.source, romaji_first, embed_link)
 
+    def format_title(self, romaji_first: bool = True) -> str | None:
+        if romaji_first:
+            return self.title_romaji or self.title
+        else:
+            return self.title
+
     def album_image(self):
         if not self.album:
             return None
@@ -450,16 +459,27 @@ class Song:
 @dataclass
 class SystemFeed:
     type: int
-    created_at: str
-    song: Song
+    created_at: datetime
+    song: Song | None
+    activity: str = field(init=False)
 
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        song = data['song']
         return cls(
             type=data['type'],
-            created_at=data['createdAt'],
-            song=Song.from_data(data['song'])
+            created_at=datetime.fromtimestamp(round(int(data['createdAt']) / 1000)),
+            song=Song.from_data(song) if song else None
         )
+
+    def __post_init__(self) -> None:
+        match self.type:
+            case 2:
+                self.activity = "Favorited"
+            case 4:
+                self.activity = "Uploaded"
+            case _:
+                self.activity = ""
 
 
 @dataclass

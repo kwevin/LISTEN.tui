@@ -91,8 +91,6 @@ class TestListenUnauth(TestCase):
             self.assertEqual(user.uuid, "6857c0b5-7ad2-4751-bb4f-9eb951154c34")
             self.assertEqual(user.username, "kwin4279")
             self.assertEqual(user.display_name, "kwin4279")
-            if user.bio:
-                self.assertIn("Nothing here", user.bio)
             self.assertGreaterEqual(user.favorites, 461)
             self.assertGreaterEqual(user.requests, 0)
             self.assertGreaterEqual(user.uploads, 0)
@@ -222,8 +220,6 @@ class TestAioListenUnath(IsolatedAsyncioTestCase):
                 self.assertEqual(user.uuid, "6857c0b5-7ad2-4751-bb4f-9eb951154c34")
                 self.assertEqual(user.username, "kwin4279")
                 self.assertEqual(user.display_name, "kwin4279")
-                if user.bio:
-                    self.assertIn("Nothing here", user.bio)
                 self.assertGreaterEqual(user.favorites, 461)
                 self.assertGreaterEqual(user.requests, 0)
                 self.assertGreaterEqual(user.uploads, 0)
