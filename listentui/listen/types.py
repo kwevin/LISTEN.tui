@@ -69,7 +69,10 @@ class User:
 
     def __post_init__(self):
         self.link = f'https://listen.moe/u/{self.username}'
-        self.bio = Markdown(markdownify(self.bio))  # type: ignore
+
+    @staticmethod
+    def convert_to_markdown(string: str) -> Markdown:
+        return Markdown(markdownify(string))  # type: ignore
 
 
 @dataclass

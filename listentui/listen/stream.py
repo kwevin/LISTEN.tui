@@ -228,6 +228,9 @@ class StreamPlayerMPV(BaseModule):
             self.pause()
 
     def raise_volume(self, vol: int = 10):
+        if (self.volume + vol) >= 1000:
+            self.volume = 1000
+            return
         self.volume += vol
 
     def lower_volume(self, vol: int = 10):
