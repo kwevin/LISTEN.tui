@@ -46,9 +46,12 @@ class ListenWebsocket(BaseModule):
                 continue
 
     async def ws_keepalive(self, interval: int = 35) -> None:
-        while True:
+        while self._running:
             await asyncio.sleep(interval)
-            await self.ws.send(json.dumps({'op': 9}))
+            try:
+                await self.ws.send(json.dumps({'op': 9}))
+            except ConnectionClosedOK:
+                return
 
     async def main(self) -> None:
         async for self.ws in websockets.connect('wss://listen.moe/gateway_v2', ping_interval=None, ping_timeout=None):
@@ -70,11 +73,8 @@ class ListenWebsocket(BaseModule):
                             asyncio.create_task(self.update_update_able())
                         case 10:
                             self._last_heartbeat = time.time()
-
                         case _:
                             pass
-                else:
-                    await self.ws.close()
 
             except ConnectionClosedOK:
                 self.update_status(False, "Websocket Connection Closed")

@@ -125,7 +125,7 @@ class StreamPlayerMPV(BaseModule):
     def _get_value(self, value: str, *args: Any) -> Any | None:
         try:
             return getattr(self.player, value, *args)
-        except RuntimeError:
+        except (RuntimeError, mpv.ShutdownError):
             return None
 
     def _restarter(self, duration: int = 20):
@@ -171,7 +171,10 @@ class StreamPlayerMPV(BaseModule):
         self.player.wait_for_property('metadata', cond=cond)
         self.player.wait_until_playing()
         self.update_status(True)
-        self.player.wait_for_playback()
+        try:
+            self.player.wait_for_playback()
+        except mpv.ShutdownError:
+            pass
 
     def on_data_update(self, method: Callable[[MPVData], Any]):
         self.update_able.append(method)
@@ -244,6 +247,10 @@ class StreamPlayerMPV(BaseModule):
 
     def set_ao_volume(self, volume: int):
         self.ao_volume = volume
+
+    def terminate(self) -> None:
+        self._log.debug("Terminating stream player")
+        self.player.quit('0')
 
 
 if __name__ == "__main__":

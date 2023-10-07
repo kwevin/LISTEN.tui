@@ -972,6 +972,7 @@ class MofNTimeCompleteColumn(MofNCompleteColumn):
 class Main:
 
     def __init__(self, debug: bool = False, bypass: bool = False) -> None:
+        self._running = True
         self.debug = debug
         self.config = Config.get_config()
         if bypass:
@@ -1028,7 +1029,8 @@ class Main:
             except KeyboardInterrupt:
                 if self.config.system.instance_lock:
                     self.free_instance_lock()
-                _exit(1)
+                self.exit()
+                return
 
     def setup(self) -> None:
         self.ws = ListenWebsocket()
@@ -1178,6 +1180,13 @@ class Main:
                 self.layout['user'].visible = True
                 self.layout['user'].update(self.user_panel)
 
-            while True:
+            while self._running:
                 self.layout['main'].update(self.info_panel)
                 time.sleep(1 / refresh_per_second)
+
+        self.player.join()
+        _exit(0)
+
+    def exit(self) -> None:
+        self._running = False
+        self.player.terminate()
