@@ -65,8 +65,8 @@ jobs:
               uses: actions/upload-artifact@v3
               with: 
                 path: |
-                    dist/listentui.exe
-                    dist/listentui_portable.exe
+                    dist/LISTEN.tui.exe
+                    dist/LISTEN.tui-portable.exe
         
 
                 
