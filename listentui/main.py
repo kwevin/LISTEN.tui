@@ -39,6 +39,7 @@ from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
 
+VERSION = '1.1.1'
 PRIMARY_COLOR = '#f92672'
 QueryType = Union[Album, Artist, Song, User, Character, Source]
 CommandID = NewType("commandID", int)
@@ -578,10 +579,7 @@ class TerminalPanel(ConsoleRenderable):
             return
         command_id = self.history.add(command, Spinner('dots', "checking favorite...", style=PRIMARY_COLOR))
         res = self.main.listen.check_favorite(song_id)
-        if not res:
-            self.history.update(command_id, self.tablelate("No song found"))
-        else:
-            self.history.update(command_id, self.tablelate(f"song {song_id}: {res}"))
+        self.history.update(command_id, self.tablelate(f"song {song_id}: {res}"))
 
     @terminal_command
     def favorite(self, command: str, args: Namespace):

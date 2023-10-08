@@ -55,7 +55,7 @@ def run():
     if args.config:
         Config(Path(args.config).resolve())
     else:
-        Config()
+        Config(portable=True)
 
     if args.debug:
         if args.log:

@@ -3,101 +3,155 @@ import sys
 from ctypes.util import find_library
 from pathlib import Path
 from shutil import move
+from time import perf_counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PyInstaller.__main__ import run as pyinstaller
 from rich.console import Console
 
-
 # on way is to have a __main__portable__.py to signify that its a portable version so that config can respect
 # portability
-def main():
-    base = [
-        '--noconfirm',
-        '--clean',
-        '--onefile',
-        '--name=listentui',
-    ]
+BASE = [
+    '--noconfirm',
+    '--clean',
+    '--onefile',
+    '--name=LISTEN.tui',
+    '--log-level', 'WARN',
+    # '--splash', 'utils/logo.png'  # lmao dont use this
+]
+MAIN_PATH = "listentui/__main__.py"
+PORTABLE_PATH = "listentui/__main_portable__.py"
 
+
+def build_linux():
+    linux = BASE.copy()
+    linux.append(MAIN_PATH)
+    with console.status("Building standalone"):
+        pyinstaller(linux)
+
+
+def generate_window_options(opts: list[str], spec: bool = False) -> list[str]:
+    # use upx if it is found
+    upx = Path().resolve().joinpath('upx')
+    if upx.is_dir():
+        console.print("Upx found, building with upx")
+        opts.extend(['--upx-dir', f'{upx}'])
+    else:
+        console.print("Upx not found, skipping upx")
+
+    # build using spec cannot take these arguments
+    if spec:
+        opts.remove("--onefile")
+        opts.remove("--name=LISTEN.tui")
+        return opts
+
+    # embed icon
+    icon = Path().resolve().joinpath('utils/logo.ico')
+    if icon.is_file():
+        console.print("Icon file found, building with icon")
+        opts.extend(['--icon', f'{icon}'])
+    else:
+        console.print("No icon found, skipping icon")
+
+    return opts
+
+
+def build_window_portable():
+    win = BASE.copy()
+    generate_window_options(win)
+
+    # locates mpv and bundle it with the program
+    libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
+    if libmpv is None:
+        libmpv = Path('mpv-2.dll').resolve()
+        if not libmpv.is_file():
+            console.print("No mpv.dll found, unable to build standalone executable with mpv")
+            return
+        else:
+            win.extend(['--add-binary', f'{libmpv};.'])
+
+    win.append(PORTABLE_PATH)
+
+    with console.status("Building window portable"):
+        pyinstaller(win)
+        move(Path().resolve().joinpath('dist/LISTEN.tui.exe'),
+             Path().resolve().joinpath('dist/LISTEN.tui-portable.exe'))
+
+
+def build_window_standalone():
+    # build a standalone, only works if mpv is not in %PATH%
+    win = BASE.copy()
+    generate_window_options(win)
+
+    win.append(MAIN_PATH)
+
+    with console.status("Building window standalone"):
+        pyinstaller(win)
+
+
+def build_window_standalone_using_spec():
+    # build a standalone, by modifying the specfile to remove mpv since it is in %PATH%
+    win = BASE.copy()
+    win = generate_window_options(win, spec=True)
+
+    specfile = Path().resolve().joinpath('LISTEN.tui.spec')
+    with open(specfile, 'r') as spec:
+        data = spec.readlines()
+
+    libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
+    if libmpv is None:
+        return
+
+    lib = Path(libmpv).name
+    for idx, value in enumerate(data):
+        if value.startswith('pyz'):
+            insert_point = idx
+            break
+
+    for idx, line in enumerate(data):
+        if "__main_portable__" in line:
+            new = line.replace("__main_portable__", "__main__")
+            data[idx] = new
+
+    data.insert(insert_point, f"a.binaries -= TOC([('{lib}', None, None)])\n")  # type: ignore
+    with open(specfile, 'w') as spec:
+        spec.writelines(data)
+
+    win.append(f"{specfile}")
+
+    with console.status("Building window standalone using specfile"):
+        pyinstaller(win)
+
+    os.remove(specfile)
+
+
+def main():
     if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
-        linux = base.copy()
-        linux.append("listentui/__main__.py")
-        with console.status("Building standalone"):
-            pyinstaller(linux)
+        build_linux()
 
     elif sys.platform == 'win32':
-        console.print("Building on windows")
-        win = base.copy()
-        script = "listentui/__main__.py"
-
-        icon = Path().resolve().joinpath('utils/logo.ico')
-        if icon.is_file():
-            console.print("Icon file found, building with icon")
-            win.extend(['--icon', f'{icon}'])
-        else:
-            console.print("No icon found, skipping icon")
-
-        upx = Path().resolve().joinpath('upx')
-        if upx.is_dir():
-            console.print("Upx found, building with upx")
-            win.extend(['--upx-dir', f'{upx}'])
-        else:
-            console.print("Upx not found, skipping upx")
-
-        standalone = win.copy()
+        build_window_portable()
         libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
-        if libmpv is None:
-            libmpv = Path('mpv-2.dll').resolve()
-            if not libmpv.is_file():
-                console.print("No mpv.dll found, unable to build standalone executable with mpv")
-                return
-            else:
-                standalone.extend(['--add-binary', f'{libmpv};.'])
-        standalone.append(script)
-        win.append(script)
-
-        with console.status("Building standalone with mpv") as task:
-            pyinstaller(standalone)
-            move(Path().resolve().joinpath('dist/listentui.exe'),
-                 Path().resolve().joinpath('dist/listentui_portable.exe'))
-
-            task.update("Building standalone without mpv")
-            # specfile = Path().resolve().joinpath('listentui.spec')
-            # with open(specfile, 'r') as spec:
-            #     data = spec.readlines()
-
-            # lib = Path(libmpv).name
-            # for idx, value in enumerate(data):
-            #     if value.startswith('pyz'):
-            #         insert_point = idx
-            #         break
-
-            # data.insert(insert_point, f"a.binaries -= TOC([('{lib}', None, None)])\n")  # type: ignore
-            # with open(specfile, 'w') as spec:
-            #     spec.writelines(data)
-
-            # win.pop()
-            # win.remove("--onefile")
-            # win.remove("--name=listentui")
-            # if icon.is_file():
-            #     win.remove("--icon")
-            #     win.remove(f"{icon}")
-
-            # win.append(f"{specfile}")
-            pyinstaller(win)
-
-            # os.remove(specfile)
+        if libmpv:
+            console.print("mpv.dll found in %PATH%, building standalone using specfile")
+            build_window_standalone_using_spec()
+        else:
+            console.print("mpv.dll not found in %PATH%, building standalone normally")
+            build_window_standalone()
 
 
 if __name__ == "__main__":
     # this will build the following
     # on linux:
-    #   listentui
+    #   LISTEN.tui
     # on windows:
-    #   listentui.exe
-    #   listentui.exe + embedded mpv
-    # on all system
-    #   poetry build
-    console = Console()
+    #   LISTEN.tui.exe
+    #   LISTEN.tui-portable.exe
+    # on mac:
+    #   it should build the same as linux, but i dont own a mac so idk
+    console = Console(style="red")
+    start = perf_counter()
     main()
+    end = perf_counter()
+    console.print(f"Building took {round(end - start)}s")
