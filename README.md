@@ -8,7 +8,6 @@
 
 # Glossary
 
-- [New! This Update](#new-features)
 - [Installation](#installation)
 - [Usage Options](#usage-options)
 - [Configuration](#configuration)
@@ -22,25 +21,6 @@
 - [Building](#build)
 
 ---
-
-# New Features
-
-```diff
-[Features]
-+ Rich Presence customisation
-+ Integrated Terminal, more at #terminal
-+ Now show ongoing event
-+ Song requester now gets more flair
-+ Add some optional startup argument, more at #usage-options
-
-
-[System Changes]
-+ Config file is now moved to systembased config location, see #configuration for more info
-+ Token validation
-+ Raised user feed limit to 10 (from 5)
-+ User feed will now only display the first artist per song
-- Remove `seek_to_end` as a keybind, use `restart_player` instead
-```
 
 # Installation
 
