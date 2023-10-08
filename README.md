@@ -48,29 +48,29 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 
 #### Linux
 
-1. Download the latest binary from releases `listentui`
+1. Download the latest binary from releases `LISTEN.tui`
 2. Move file to $PATH
-3. Run `listentui`
+3. Run `LISTEN.tui`
 
 #### Windows
 
-1. Download the latest executable from releases `listentui.exe` or `listentui_portable.exe`
+1. Download the latest executable from releases `LISTEN.tui.exe` or `LISTEN.tui-portable.exe`
 2. Move file to %PATH%
-3. Run `listentui` in any terminal
+3. Run `LISTEN.tui` in any terminal
 
 Alternatively, double clicking the executable works too (although some icons might be missing)
 
 #### Universal
 
 1. Have python version greater than or equal to `3.11.1`
-2. Download the `listentui*.whl` file
+2. Download the `LISTEN.tui*.whl` file
 3. In a terminal, run `pip install` on the whl file
-4. Run `listentui`
+4. Run `LISTEN.tui`
 
 # Usage Options
 
 ```sh
-listentui [OPTIONS]
+LISTEN.tui [OPTIONS]
 ```
 
 ## General Options
@@ -120,7 +120,7 @@ Tip: You can use identifiers such as `${SPACE}`, more at [Window](https://github
 - `enable_rpc`: enable rich presence integration
 - `default_placeholder`: placeholder for when text field falls below the two character limit specified by discord
 - `use_fallback`: use a fallback image if there isnt one
-- `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for [LISTEN.moe](https://listen.moe/_nuxt/img/logo-square-64.248c1f3.png) icon)
+- `fallback`: the fallback image, has to be a link that discord can access (alternatively, use "fallback2" for LISTEN.moe's icon)
 - `use_artist`: use the artist image instead if no album image is found
 - `detail`: the title of the presence, can take in `${keys}`
 - `state`: the subtitle of the presence, can take in `${keys}`
