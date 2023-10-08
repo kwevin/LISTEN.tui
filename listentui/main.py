@@ -805,6 +805,7 @@ class InfoPanel(ConsoleRenderable):
         self.ws = websocket
         self.player = player
         self.player.on_data_update(self.calc_delay)
+        self.player.on_restart(self.reset_delay)
         self.ws_data: Optional[ListenWsData] = None
         self.current_song: Table
         self.start_time = time.time()
@@ -925,14 +926,17 @@ class InfoPanel(ConsoleRenderable):
 
         if ws_song and audio_song:
             if ws_song not in audio_song:
-                self.song_delay = '???'
+                self.song_delay = '--.--'
                 return
         else:
-            self.song_delay = '???'
+            self.song_delay = '--.--'
             return
 
         diff = audio_start - ws_start
         self.song_delay = f'{diff.total_seconds():.2f}'
+
+    def reset_delay(self) -> None:
+        self.song_delay = '0'
 
 
 class HeadingPanel(ConsoleRenderable):

@@ -58,6 +58,8 @@ class StreamPlayerMPV(BaseModule):
         self._data: Optional[MPVData] = None
         self.idle_count: int = 0
         self.update_able: list[Callable[[MPVData], Any]] = []
+        self.restart_able: list[Callable[..., Any]] = []
+        self._lock = threading.Lock()
 
     @property
     def data(self) -> MPVData | None:
@@ -135,6 +137,8 @@ class StreamPlayerMPV(BaseModule):
                 if self.idle_count > duration:
                     self._log.info(f'Idle time exceed {duration}s when not paused. Restarting...')
                     self.restart()
+                    for func in self.restart_able:
+                        threading.Thread(target=func).start()
                     self.idle_count = 0
                 self.idle_count += 1
             else:
@@ -179,30 +183,34 @@ class StreamPlayerMPV(BaseModule):
     def on_data_update(self, method: Callable[[MPVData], Any]):
         self.update_able.append(method)
 
+    def on_restart(self, method: Callable[..., Any]):
+        self.restart_able.append(method)
+
     def preview(self, url: str, on_play: Callable[..., Any], on_error: Callable[..., Any]):
-        base_url = "https://cdn.listen.moe/snippets/"
-        final_url = base_url + url
-        player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
+        with self._lock:
+            base_url = "https://cdn.listen.moe/snippets/"
+            final_url = base_url + url
+            player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
 
-        @player.event_callback('end-file')
-        def check(event: mpv.MpvEvent):  # type: ignore
-            global error
-            if isinstance(event.data, mpv.MpvEventEndFile):
-                if event.data.reason == mpv.MpvEventEndFile.ERROR:
-                    threading.Thread(target=on_error).start()
-                    player.quit('-17')
+            @player.event_callback('end-file')
+            def check(event: mpv.MpvEvent):  # type: ignore
+                global error
+                if isinstance(event.data, mpv.MpvEventEndFile):
+                    if event.data.reason == mpv.MpvEventEndFile.ERROR:
+                        threading.Thread(target=on_error).start()
+                        player.quit('-17')
 
-        player.play(final_url)
-        try:
-            player.wait_until_playing()
-            self.pause()
-            threading.Thread(target=on_play).start()
-            player.wait_for_playback()
-            self.seek_to_end()
-            self.play()
-            player.quit('0')
-        except mpv.ShutdownError:
-            pass
+            player.play(final_url)
+            try:
+                player.wait_until_playing()
+                self.pause()
+                threading.Thread(target=on_play).start()
+                player.wait_for_playback()
+                self.seek_to_end()
+                self.play()
+                player.quit('0')
+            except mpv.ShutdownError:
+                pass
 
     def seek_to_end(self):
         # https://mpv.io/manual/master/#command-interface-seek-%3Ctarget%3E-[%3Cflags%3E]
@@ -214,12 +222,19 @@ class StreamPlayerMPV(BaseModule):
             self.restart()
 
     def restart(self):
+        for func in self.restart_able:
+            threading.Thread(target=func).start()
         self.player.play(self.stream_url)
         if self.paused:
             self.play()
 
     def play(self):
         self.paused = False
+        if self.cache:
+            if self.cache.cache_duration <= 18:
+                self.seek_to_end()
+        else:
+            self.player.play(self.stream_url)
 
     def pause(self):
         self.paused = True
