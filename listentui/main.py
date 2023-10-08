@@ -63,6 +63,7 @@ def terminal_command(func: Callable[..., Any]) -> Any:
 class CommandGroup:
     command: str
     output: RenderableType = field(default_factory=Text)
+    segments_cache: list[list[Segment]] = field(default_factory=list)
 
 
 class TerminalCommandHistoryHandler:
@@ -71,26 +72,39 @@ class TerminalCommandHistoryHandler:
         self._data: dict[CommandID, CommandGroup] = {}
         self._command_id_count = 0
         self.lines_rendered = 0
+        self._width = 0
+
+    # for command in history
+    # if cache:
+    #   use cache
+    # else:
+    #   generate render
+
+    # each command tell history that it is done, and it should cache it now
 
     @property
     def history_count(self):
         return len(self._data)
 
     def render(self, options: ConsoleOptions, start: int) -> Iterable[Segment]:
-        render_objects: list[RenderableType] = []
-        for group in self._data.values():
-            table = Table.grid()
+        width = options.max_width - 4
+        if width != self._width:
+            self._recache_all(width)
+        self._width = width
+
+        render_segments: list[list[Segment]] = []
+        for command in self._data.values():
             prompt = Text()
             prompt.append("> ", style=PRIMARY_COLOR)
-            prompt.append(group.command)
-            table.add_row(prompt)
-            table.add_row(group.output)
-            render_objects.append(table)
+            prompt.append(command.command)
+            render_segments.extend(self._get_segment(prompt, width))
+            if command.segments_cache:
+                render_segments.extend(command.segments_cache)
+            else:
+                render_segments.extend(self._get_segment(command.output, width))
 
-        console = Console(width=options.max_width - 4)
-        lines = console.render_lines(Group(*render_objects), new_lines=True)
-        self.lines_rendered = len(lines)
-        for line in lines[start:start + options.max_height]:
+        self.lines_rendered = len(render_segments)
+        for line in render_segments[start:start + options.max_height]:
             yield from line
 
     def add(self, command: str, output: Optional[RenderableType] = None) -> CommandID:
@@ -104,6 +118,17 @@ class TerminalCommandHistoryHandler:
 
     def update(self, id: CommandID, result: RenderableType) -> None:
         self._data[id].output = result
+
+    def done(self, id: CommandID) -> None:
+        self._data[id].segments_cache = self._get_segment(self._data[id].output, self._width)
+
+    def _get_segment(self, renderable: RenderableType, width: int) -> list[list[Segment]]:
+        console = Console(width=width)
+        return console.render_lines(renderable, new_lines=True)
+
+    def _recache_all(self, width: int) -> None:
+        for command in self._data.values():
+            command.segments_cache = self._get_segment(command.output, width)
 
     def clear(self) -> None:
         self._data.clear()
@@ -394,13 +419,15 @@ class TerminalPanel(ConsoleRenderable):
 
     def help(self, command: str, args: Namespace):
         if not args.cmd:
-            self.history.add(command, self.tablelate(self.parser.format_help()))
+            command_id = self.history.add(command, self.tablelate(self.parser.format_help()))
         else:
             subcmd = self.subparser.choices.get(args.cmd)
             if not subcmd:
-                self.history.add(f"{command}", self.tablelate(f"{args.cmd} is not a valid command"))
+                command_id = self.history.add(f"{command}", self.tablelate(f"{args.cmd} is not a valid command"))
             else:
-                self.history.add(f"{command}", self.tablelate(subcmd.format_help()))
+                command_id = self.history.add(f"{command}", self.tablelate(subcmd.format_help()))
+
+        self.history.done(command_id)
 
     def clear(self, _: str, __: Namespace):
         self.scroll_offset = self.max_scroll_height
@@ -415,7 +442,9 @@ class TerminalPanel(ConsoleRenderable):
             res = pretty_repr(eval(" ".join(cmd)))
         except Exception as e:
             res = pretty_repr(e)
-        self.history.add(f"{command}", self.tablelate(res))
+        command_id = self.history.add(f"{command}", self.tablelate(res))
+
+        self.history.done(command_id)
 
     @terminal_command
     def album(self, command: str, args: Namespace):
@@ -425,14 +454,18 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.album:
                 album_id = self.main.current_song.album.id
             else:
-                self.history.add(command, self.tablelate("Current song have no album"))
+                command_id = self.history.add(command, self.tablelate("Current song have no album"))
+                self.history.done(command_id)
                 return
+
         command_id = self.history.add(command, Spinner('dots', "querying album...", style=PRIMARY_COLOR))
         res = self.main.listen.album(album_id)
         if not res:
             self.history.update(command_id, self.tablelate("No album found"))
         else:
             self.history.update(command_id, self.tablelate(res))
+
+        self.history.done(command_id)
 
     @terminal_command
     def artist(self, command: str, args: Namespace):
@@ -442,8 +475,10 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.artists:
                 artist_id = self.main.current_song.artists[0].id
             else:
-                self.history.add(command, self.tablelate("Current song have no artist"))
+                command_id = self.history.add(command, self.tablelate("Current song have no artist"))
+                self.history.done(command_id)
                 return
+
         command_id = self.history.add(command, Spinner('dots', "querying artist...", style=PRIMARY_COLOR))
         res = self.main.listen.artist(artist_id)
         if not res:
@@ -451,12 +486,15 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+        self.history.done(command_id)
+
     @terminal_command
     def song(self, command: str, args: Namespace):
         if args.id:
             song_id = args.id
         else:
             song_id = self.main.current_song.id
+
         command_id = self.history.add(command, Spinner('dots', "querying song...", style=PRIMARY_COLOR))
         res = self.main.listen.song(song_id)
         if not res:
@@ -464,13 +502,17 @@ class TerminalPanel(ConsoleRenderable):
         else:
             self.history.update(command_id, self.tablelate(res))
 
+        self.history.done(command_id)
+
     @terminal_command
     def preview(self, command: str, args: Namespace):
         song_id = args.id
+
         command_id = self.history.add(command, Spinner('dots', "fetching song...", style=PRIMARY_COLOR))
         res = self.main.listen.song(song_id)
         if not res:
             self.history.update(command_id, self.tablelate("No song found"))
+            self.history.done(command_id)
         else:
             def progress():
                 romaji_first = self.main.config.display.romaji_first
@@ -494,12 +536,15 @@ class TerminalPanel(ConsoleRenderable):
             else:
                 self.history.update(command_id, self.tablelate("Song have no playable snippet"))
 
+        self.history.done(command_id)
+
     @terminal_command
     def user(self, command: str, args: Namespace):
         romaji_first = self.main.config.display.romaji_first
         sep = self.main.config.display.separator
         username = args.username
         count = args.count or 10
+
         command_id = self.history.add(command, Spinner('dots', "querying user...", style=PRIMARY_COLOR))
         res = self.main.listen.user(username, system_count=count)
         if not res:
@@ -534,6 +579,8 @@ class TerminalPanel(ConsoleRenderable):
             table.add_row("feeds", self.tablelate(feed_table))
             self.history.update(command_id, self.tablelate(table))
 
+        self.history.done(command_id)
+
     @terminal_command
     def character(self, command: str, args: Namespace):
         if args.id:
@@ -542,14 +589,18 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.characters:
                 character_id = self.main.current_song.characters[0].id
             else:
-                self.history.add(command, self.tablelate("Current song have no characters"))
+                command_id = self.history.add(command, self.tablelate("Current song have no characters"))
+                self.history.done(command_id)
                 return
+
         command_id = self.history.add(command, Spinner('dots', "querying character...", style=PRIMARY_COLOR))
         res = self.main.listen.character(character_id)
         if not res:
             self.history.update(command_id, self.tablelate("No character found"))
         else:
             self.history.update(command_id, self.tablelate(res))
+
+        self.history.done(command_id)
 
     @terminal_command
     def source(self, command: str, args: Namespace):
@@ -559,14 +610,18 @@ class TerminalPanel(ConsoleRenderable):
             if self.main.current_song.source:
                 source_id = self.main.current_song.source.id
             else:
-                self.history.add(command, self.tablelate("Current song have no source"))
+                command_id = self.history.add(command, self.tablelate("Current song have no source"))
+                self.history.done(command_id)
                 return
+
         command_id = self.history.add(command, Spinner('dots', "querying source...", style=PRIMARY_COLOR))
         res = self.main.listen.source(source_id)
         if not res:
             self.history.update(command_id, self.tablelate("No source found"))
         else:
             self.history.update(command_id, self.tablelate(res))
+
+        self.history.done(command_id)
 
     @terminal_command
     def check_favorite(self, command: str, args: Namespace):
@@ -575,17 +630,20 @@ class TerminalPanel(ConsoleRenderable):
         else:
             song_id = self.main.current_song.id
             status = self.main.current_song.is_favorited
-            self.history.add(command, self.tablelate(f"song {song_id}: {status}"))
+            command_id = self.history.add(command, self.tablelate(f"song {song_id}: {status}"))
+            self.history.done(command_id)
             return
+
         command_id = self.history.add(command, Spinner('dots', "checking favorite...", style=PRIMARY_COLOR))
         res = self.main.listen.check_favorite(song_id)
         self.history.update(command_id, self.tablelate(f"song {song_id}: {res}"))
+
+        self.history.done(command_id)
 
     @terminal_command
     def favorite(self, command: str, args: Namespace):
         romaji_first = self.main.config.display.romaji_first
         sep = self.main.config.display.separator
-
         if args.id:
             song_id = args.id
         else:
@@ -595,9 +653,11 @@ class TerminalPanel(ConsoleRenderable):
             title = self.main.current_song.format_title(romaji_first)
             artist = self.main.current_song.format_artists(1, show_character=False, romaji_first=romaji_first, sep=sep)
             if status:
-                self.history.add(command, self.tablelate(f"Favoriting {title} by {artist}"))
+                command_id = self.history.add(command, self.tablelate(f"Favoriting {title} by {artist}"))
             else:
-                self.history.add(command, self.tablelate(f"Unfavoriting {title} by {artist}"))
+                command_id = self.history.add(command, self.tablelate(f"Unfavoriting {title} by {artist}"))
+
+            self.history.done(command_id)
             return
 
         command_id = self.history.add(command, Spinner('dots', "favoriting song...", style=PRIMARY_COLOR))
@@ -614,6 +674,8 @@ class TerminalPanel(ConsoleRenderable):
                 self.history.update(command_id, self.tablelate(f"Unfavoriting {title} by {artist}"))
             Thread(target=self.main.listen.favorite_song, args=(song_id, )).start()
             self.main.user_panel.update()
+
+        self.history.done(command_id)
 
     @terminal_command
     def search(self, command: str, args: Namespace):
@@ -632,6 +694,7 @@ class TerminalPanel(ConsoleRenderable):
 
         if len(res) == 0:
             self.history.update(command_id, self.tablelate("Nothing to show :("))
+            self.history.done(command_id)
             return
 
         for song in res:
@@ -644,6 +707,8 @@ class TerminalPanel(ConsoleRenderable):
                           f"{song.format_artists(1, False, romaji_first, sep)}")
 
         self.history.update(command_id, self.tablelate(table))
+
+        self.history.done(command_id)
 
     @terminal_command
     def query_history(self, command: str, args: Namespace):
@@ -668,16 +733,20 @@ class TerminalPanel(ConsoleRenderable):
 
         self.history.update(command_id, self.tablelate(table))
 
+        self.history.done(command_id)
+
     @terminal_command
     def download(self, command: str, args: Namespace):
         t = Table.grid()
         e = Progress()
         t.add_row(e)
         k = e.add_task('testing', total=100)
-        self.history.add(command, t)
+        command_id = self.history.add(command, t)
         while not e.finished:
             e.advance(k)
             time.sleep(0.2)
+
+        self.history.done(command_id)
 
 
 class PreviousSongPanel(ConsoleRenderable):

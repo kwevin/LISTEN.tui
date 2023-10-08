@@ -76,9 +76,4 @@ def run():
 
 
 if __name__ == '__main__':
-    from rich.console import Console
-    try:
-        run()
-    except Exception:
-        Console().print_exception()
-        exit(0)
+    run()

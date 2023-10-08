@@ -123,8 +123,6 @@ def build_window_standalone_using_spec():
     with console.status("Building window standalone using specfile"):
         pyinstaller(win)
 
-    os.remove(specfile)
-
 
 def main():
     if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
@@ -139,6 +137,10 @@ def main():
         else:
             console.print("mpv.dll not found in %PATH%, building standalone normally")
             build_window_standalone()
+
+        specfile = Path().resolve().joinpath('LISTEN.tui.spec')
+        if specfile.is_file():
+            os.remove(specfile)
 
 
 if __name__ == "__main__":

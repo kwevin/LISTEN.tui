@@ -222,19 +222,21 @@ class StreamPlayerMPV(BaseModule):
             self.restart()
 
     def restart(self):
-        for func in self.restart_able:
-            threading.Thread(target=func).start()
         self.player.play(self.stream_url)
         if self.paused:
             self.play()
+        for func in self.restart_able:
+            threading.Thread(target=func).start()
 
     def play(self):
         self.paused = False
         if self.cache:
             if self.cache.cache_duration <= 18:
                 self.seek_to_end()
+            else:
+                self.restart()
         else:
-            self.player.play(self.stream_url)
+            self.restart()
 
     def pause(self):
         self.paused = True
