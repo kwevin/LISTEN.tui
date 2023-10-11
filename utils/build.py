@@ -10,13 +10,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PyInstaller.__main__ import run as pyinstaller
 from rich.console import Console
 
-# on way is to have a __main__portable__.py to signify that its a portable version so that config can respect
-# portability
+NAME = 'listentui'
 BASE = [
     '--noconfirm',
     '--clean',
     '--onefile',
-    '--name=LISTEN.tui',
+    f'--name={NAME}',
     '--log-level', 'WARN',
     # '--splash', 'utils/logo.png'  # lmao dont use this
 ]
@@ -43,7 +42,7 @@ def generate_window_options(opts: list[str], spec: bool = False) -> list[str]:
     # build using spec cannot take these arguments
     if spec:
         opts.remove("--onefile")
-        opts.remove("--name=LISTEN.tui")
+        opts.remove(f"--name={NAME}")
         return opts
 
     # embed icon
@@ -66,7 +65,7 @@ def build_window_portable():
     if libmpv is None:
         libmpv = Path('mpv-2.dll').resolve()
         if not libmpv.is_file():
-            console.print("No mpv.dll found, unable to build standalone executable with mpv")
+            console.print("No mpv-2.dll found, unable to build standalone executable with mpv")
             return
         else:
             win.extend(['--add-binary', f'{libmpv};.'])
@@ -75,8 +74,8 @@ def build_window_portable():
 
     with console.status("Building window portable"):
         pyinstaller(win)
-        move(Path().resolve().joinpath('dist/LISTEN.tui.exe'),
-             Path().resolve().joinpath('dist/LISTEN.tui-portable.exe'))
+        move(Path().resolve().joinpath(f'dist/{NAME}.exe'),
+             Path().resolve().joinpath(f'dist/{NAME}-portable.exe'))
 
 
 def build_window_standalone():
@@ -95,7 +94,7 @@ def build_window_standalone_using_spec():
     win = BASE.copy()
     win = generate_window_options(win, spec=True)
 
-    specfile = Path().resolve().joinpath('LISTEN.tui.spec')
+    specfile = Path().resolve().joinpath(f'{NAME}.spec')
     with open(specfile, 'r') as spec:
         data = spec.readlines()
 
@@ -138,7 +137,7 @@ def main():
             console.print("mpv.dll not found in %PATH%, building standalone normally")
             build_window_standalone()
 
-        specfile = Path().resolve().joinpath('LISTEN.tui.spec')
+        specfile = Path().resolve().joinpath(f'{NAME}.spec')
         if specfile.is_file():
             os.remove(specfile)
 
@@ -146,10 +145,10 @@ def main():
 if __name__ == "__main__":
     # this will build the following
     # on linux:
-    #   LISTEN.tui
+    #   listentui.tui
     # on windows:
-    #   LISTEN.tui.exe
-    #   LISTEN.tui-portable.exe
+    #   listentui.exe
+    #   listentui-portable.exe
     # on mac:
     #   it should build the same as linux, but i dont own a mac so idk
     console = Console(style="red")

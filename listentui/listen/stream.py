@@ -5,56 +5,30 @@ from logging import DEBUG, INFO, WARN
 from typing import Any, Callable, Optional
 
 import mpv
+# import requests
 from rich.pretty import pretty_repr
 
 from ..config import Config
 from ..modules.baseModule import BaseModule
 from .types import DemuxerCacheState, MPVData
 
-# class StreamPlayerVLC:
-#     def __init__(self) -> None:
-#         import vlc
-#         from vlc import MediaPlayer
-#         self.stream_url = "https://listen.moe/stream"
-#         self.vlc = vlc.Instance()
-#         self.player: MediaPlayer = self.vlc.media_player_new()
-#         self.player.set_media(self.vlc.media_new(self.stream_url))
-#         self.player.audio_set_volume(30)
-
-#     def play(self) -> None:
-#         self.player.play()
-
-#     def pause(self) -> None:
-#         self.player.pause()
-
-#     def is_playing(self) -> bool:
-#         return True if self.player.is_playing() else False
-
-#     def set_volume(self, volume: int):
-#         e = self.player.audio_set_volume(volume)
-#         if not e:
-#             return
-#         else:
-#             raise Exception("Unable to set volume")
-
-#     def length(self):
-#         return self.player.get_time()
-
-#     def release(self):
-#         self.player.release()
-
-#     def retain(self):
-#         self.player.retain()
-
 
 class StreamPlayerMPV(BaseModule):
     def __init__(self) -> None:
         super().__init__()
         self.config = Config.get_config()
+        # self.stream_url = "python://listen"
         self.stream_url = "https://listen.moe/stream"
         self.mpv_options = self.config.player.mpv_options.copy()
         self.mpv_options['volume'] = self.config.persist.last_volume
         self.player = mpv.MPV(log_handler=self._log_handler, **self.mpv_options)
+
+        # @self.player.python_stream('listen')
+        # def stream():  # type: ignore
+        #     response = requests.get("https://listen.moe/stream", stream=True)
+        #     for chunk in response.iter_content(1024):
+        #         yield chunk
+
         self._data: Optional[MPVData] = None
         self.idle_count: int = 0
         self.update_able: list[Callable[[MPVData], Any]] = []
