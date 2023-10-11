@@ -48,29 +48,29 @@ For the icons, a nerd font font pack is required, get them at [Nerd Font](https:
 
 #### Linux
 
-1. Download the latest binary from releases `LISTEN.tui`
+1. Download the latest binary from releases `listentui`
 2. Move file to $PATH
-3. Run `LISTEN.tui`
+3. Run `listentui`
 
 #### Windows
 
-1. Download the latest executable from releases `LISTEN.tui.exe` or `LISTEN.tui-portable.exe`
+1. Download the latest executable from releases `listentui.exe` or `listentui-portable.exe`
 2. Move file to %PATH%
-3. Run `LISTEN.tui` in any terminal
+3. Run `listentui` in any terminal
 
 Alternatively, double clicking the executable works too (although some icons might be missing)
 
 #### Universal
 
 1. Have python version greater than or equal to `3.11.1`
-2. Download the `LISTEN.tui*.whl` file
+2. Download the `listentui*.whl` file
 3. In a terminal, run `pip install` on the whl file
-4. Run `LISTEN.tui`
+4. Run `listentui`
 
 # Usage Options
 
 ```sh
-LISTEN.tui [OPTIONS]
+listentui [OPTIONS]
 ```
 
 ## General Options
