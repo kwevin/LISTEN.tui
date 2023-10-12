@@ -39,7 +39,7 @@ from .listen.websocket import ListenWebsocket
 from .modules.baseModule import BaseModule
 from .modules.presence import DiscordRichPresence
 
-VERSION = '1.1.1'
+VERSION = '1.2.1'
 PRIMARY_COLOR = '#f92672'
 QueryType = Union[Album, Artist, Song, User, Character, Source]
 CommandID = NewType("commandID", int)

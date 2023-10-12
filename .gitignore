@@ -6,5 +6,5 @@ upx
 __pycache__
 *.spec
 *.dll
-changes
+changes.txt
 *.code-workspace

@@ -110,43 +110,43 @@ class Config:
     _CONFIG: "Config"
 
     def __init__(self, config_file: Optional[Path] = None, portable: bool = False) -> None:
+        if portable:
+            self.config_root = Path(sys.argv[0]).parent.resolve()
+        else:
+            if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
+                xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
+                if xdg_config_home:
+                    self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
+                else:
+                    user_home = os.environ.get('HOME')
+                    if not user_home:
+                        raise Exception("Where da hell is your $HOME directory")
+                    xdg_config_home = Path(user_home).resolve().joinpath('.config')
+                    self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
+            elif sys.platform == "win32":
+                roaming = os.environ.get("APPDATA")
+                if not roaming:
+                    raise Exception("uhh you dont have appdata roaming folder?")
+                self.config_root = Path(roaming).resolve().joinpath('listentui')
+            else:
+                raise NotImplementedError("Not supported")
+
+        if not self.config_root.is_dir():
+            os.mkdir(self.config_root)
+
         if config_file:
             self.config_file = config_file
         else:
-            if portable:
-                self.config_root = Path().resolve()
-                self.config_file = Path(self.config_root).joinpath('config.toml')
-            else:
-                if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
-                    xdg_config_home = os.environ.get('XDG_CONFIG_HOME')
-                    if xdg_config_home:
-                        self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
-                    else:
-                        user_home = os.environ.get('HOME')
-                        if not user_home:
-                            raise Exception("Where da hell is your $HOME directory")
-                        xdg_config_home = Path(user_home).resolve().joinpath('.config')
-                        self.config_root = Path(xdg_config_home).resolve().joinpath('listentui')
-                elif sys.platform == "win32":
-                    roaming = os.environ.get("APPDATA")
-                    if not roaming:
-                        raise Exception("uhh you dont have appdata roaming folder?")
-                    self.config_root = Path(roaming).resolve().joinpath('listentui')
-                else:
-                    raise NotImplementedError("Not supported")
+            self.config_file = self.config_root.joinpath('config.toml')
 
-                if not self.config_root.is_dir():
-                    os.mkdir(self.config_root)
-                self.config_file = Path(self.config_root).joinpath('config.toml')
+        if not self.config_file.is_file():
+            self._write(self.config_file, self._default())
 
-            if not self.config_file.is_file():
-                self._write(self.config_file, self._default())
-
-            persist_folder = self.config_root.joinpath('.persist')
-            self.persist_file = persist_folder.joinpath('persist.toml')
-            if not persist_folder.is_dir():
-                os.mkdir(persist_folder)
-                self._write(self.persist_file, asdict(Persist()))
+        persist_folder = self.config_root.joinpath('.persist')
+        self.persist_file = persist_folder.joinpath('persist.toml')
+        if not persist_folder.is_dir():
+            os.mkdir(persist_folder)
+            self._write(self.persist_file, asdict(Persist()))
 
         try:
             self._load()
