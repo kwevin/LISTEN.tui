@@ -121,7 +121,7 @@ class StreamPlayerMPV(BaseModule):
 
     def run(self):
         threading.Thread(target=self._restarter,
-                         name='MPV_restarter',
+                         name='MPVStreamRestarter',
                          args=(self.config.player.restart_timeout, )).start()
         self.player.play(self.stream_url)
         self.update_status(False, 'Buffering...')
@@ -142,7 +142,7 @@ class StreamPlayerMPV(BaseModule):
                 for method in self.update_able:
                     threading.Thread(target=method,
                                      args=(self._data,),
-                                     name='metadata_updater').start()
+                                     name='MPVMetadataUpdater').start()
         self.player.observe_property('metadata', metadata)
 
         cond: Callable[..., Any] = lambda val: True if val else False
@@ -168,7 +168,6 @@ class StreamPlayerMPV(BaseModule):
 
             @player.event_callback('end-file')
             def check(event: mpv.MpvEvent):  # type: ignore
-                global error
                 if isinstance(event.data, mpv.MpvEventEndFile):
                     if event.data.reason == mpv.MpvEventEndFile.ERROR:
                         threading.Thread(target=on_error).start()
@@ -182,7 +181,7 @@ class StreamPlayerMPV(BaseModule):
                 player.wait_for_playback()
                 self.seek_to_end()
                 self.play()
-                player.quit('0')
+                player.terminate()
             except mpv.ShutdownError:
                 pass
 

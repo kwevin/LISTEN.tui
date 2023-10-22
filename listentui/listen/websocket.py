@@ -35,7 +35,7 @@ class ListenWebsocket(BaseModule):
 
     async def update_update_able(self) -> None:
         for method in self.update_able:
-            Thread(target=method, args=(self._data, )).start()
+            Thread(target=method, args=(self._data, ), name="WebsocketUpdateUpdater").start()
 
     def run(self) -> None:
         while self._running:

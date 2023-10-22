@@ -13,8 +13,10 @@ from argparse import ArgumentParser, Namespace
 
 from listentui.config import Config
 from listentui.log import Logger
-from listentui.main import VERSION, Main
+from listentui.main import Main
 
+VERSION = "1.2.1"
+PORTABLE = False
 parser = ArgumentParser(prog="Listen.tui", description="A tui for LISTEN.moe")
 parser.add_argument("-v", "--version",
                     dest="version",
@@ -43,6 +45,34 @@ parser.add_argument("--bypass",
                     action="store_true",
                     help="Bypass and clears the instance lock"
                     )
+parser.add_argument("--clean-temp",
+                    dest="clean",
+                    action="store_true",
+                    help="Clean any temporary files created due to killing the program with task manager or x button")
+
+
+def clean():
+    import os
+    from glob import glob
+    from pathlib import Path
+    from shutil import rmtree
+
+    from rich.console import Console
+    from rich.progress import track
+
+    console = Console()
+    temp_path = Path(os.environ["LOCALAPPDATA"]).joinpath("Temp")
+    temp_folder = glob("_MEI*", root_dir=temp_path)
+
+    if len(temp_folder) == 0:
+        console.print(r"\^o^/ no temporary folder found")
+        return
+
+    for folder in track(temp_folder, description="Cleaning pyinstaller temporary folder"):
+        rmtree(temp_path.joinpath(folder), ignore_errors=True)
+
+    console.print(r"(✿◠‿◠) All done!")
+    return
 
 
 def run():
@@ -52,10 +82,14 @@ def run():
         print(VERSION)
         sys.exit()
 
+    if args.clean:
+        clean()
+        sys.exit()
+
     if args.config:
-        Config(Path(args.config).resolve())
+        Config(Path(args.config).resolve(), portable=PORTABLE)
     else:
-        Config()
+        Config(portable=PORTABLE)
 
     if args.debug:
         if args.log:

@@ -23,6 +23,47 @@ MAIN_PATH = "listentui/__main__.py"
 PORTABLE_PATH = "listentui/__main_portable__.py"
 
 
+def set_version():
+    import tomli
+
+    with open('pyproject.toml', 'rb') as pyproject:
+        version: str = tomli.load(pyproject)["tool"]["poetry"]["version"]
+
+    with open(MAIN_PATH, 'r') as main:
+        data = main.readlines()
+
+    index = 0
+    for idx, line in enumerate(data):
+        if line.startswith("VERSION"):
+            index = idx
+            break
+
+    data[index] = f"VERSION = \"{version}\"\n"
+
+    with open(MAIN_PATH, 'w') as main:
+        main.writelines(data)
+
+
+def make_portable_main():
+    from shutil import copy
+
+    copy(MAIN_PATH, PORTABLE_PATH)
+
+    with open(PORTABLE_PATH, 'r') as main:
+        data = main.readlines()
+
+    index = 0
+    for idx, line in enumerate(data):
+        if line.startswith("PORTABLE"):
+            index = idx
+            break
+
+    data[index] = "PORTABLE = True\n"
+
+    with open(PORTABLE_PATH, 'w') as main:
+        main.writelines(data)
+
+
 def build_linux():
     linux = BASE.copy()
     linux.append(MAIN_PATH)
@@ -124,10 +165,12 @@ def build_window_standalone_using_spec():
 
 
 def main():
+    set_version()
     if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
         build_linux()
 
     elif sys.platform == 'win32':
+        make_portable_main()
         build_window_portable()
         libmpv = find_library('mpv-2.dll') or find_library('mpv-1.dll')
         if libmpv:
@@ -140,6 +183,7 @@ def main():
         specfile = Path().resolve().joinpath(f'{NAME}.spec')
         if specfile.is_file():
             os.remove(specfile)
+        os.remove(PORTABLE_PATH)
 
 
 if __name__ == "__main__":

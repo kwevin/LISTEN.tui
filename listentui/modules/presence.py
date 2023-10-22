@@ -1,4 +1,4 @@
-# type: ignore
+# type: ignore[reportMissingTypeStubs]
 import asyncio
 import os
 import time
@@ -159,7 +159,8 @@ class DiscordRichPresence(BaseModule):
             return image
         if not image and not use_fallback:
             return image
-        return image
+        else:
+            return fallback
 
     async def get_large_text(self) -> str | None:
         large_text = Template(self.config.large_text).substitute(self.song_dict)
