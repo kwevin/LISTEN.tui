@@ -531,7 +531,7 @@ class Listen(BaseClient):
             uuid=user['uuid'],
             username=user['username'],
             display_name=user['displayName'],
-            bio=CurrentUser.convert_to_markdown(user['bio']),
+            bio=CurrentUser.convert_to_markdown(user['bio']) if user['bio'] else None,
             favorites=user['favorites']['count'],
             uploads=user['uploads']['count'],
             requests=user['requests']['count'],
