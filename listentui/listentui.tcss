@@ -1,0 +1,31 @@
+#app-grid {
+    grid-size: 2 1;
+    grid-rows: 1fr;
+    grid-columns: 7 1fr;
+    height: 1fr;
+}
+  
+#sidebar {
+    height: 100%;
+}
+
+#sidebar Button {
+    max-width: 7;
+    height: auto;
+    border: round;
+}
+
+#home-page {
+    grid-size: 2 2;
+    grid-rows: 20 1fr;
+    grid-columns: 80% 20%;
+}
+
+#home-main {
+    column-span: 2;
+}
+
+ContentSwitcher * {
+    width: 1fr;
+    height: 1fr;
+}

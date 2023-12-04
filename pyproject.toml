@@ -1,31 +1,26 @@
 [tool.poetry]
 name = "listentui"
-version = "1.2.1"
-description = "a LISTEN.moe tui application"
-authors = ["kwevin <kwevinnotdev@gmail.com>"]
+version = "2.0.0"
+description = "A LISTEN.moe TUI"
+authors = ["kwevin"]
 readme = "README.md"
-exclude = ["utils/build.py"]
 
 [tool.poetry.dependencies]
-python = "^3.11,<3.12"
-gql = {extras = ["aiohttp", "requests"], version = "^3.4.1"}
-psutil = "^5.9.5"
+python = ">=3.11,<3.13"
 pypresence = "^4.3.0"
-python-mpv = "^1.0.4"
-readchar = "^4.0.5"
-rich = "^13.5.2"
+python-mpv = "^1.0.5"
+rich = "^13.7.0"
 tomli = "^2.0.1"
 tomli-w = "^1.0.0"
-websockets = "^11.0.3"
 markdownify = "^0.11.6"
-yt-dlp = "^2023.10.7"
-ytmusicapi = "^1.3.0"
-
+textual = "^0.44.0"
+gql = {extras = ["aiohttps"], version = "^3.4.1"}
 
 [tool.poetry.group.dev.dependencies]
-flake8 = "^6.1.0"
-isort = "^5.12.0"
-pyinstaller = "^6.0.0"
+ruff = "^0.1.6"
+pyinstaller = "^6.2.0"
+Nuitka = "^1.9.3"
+textual-dev = "^1.2.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -33,3 +28,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 listentui = 'listentui.__main__:run'
+
+[tool.ruff.lint]
+preview = true
+select = ["E", "F", "I", "N", "B", "ASYNC", "A", "COM", "C4", "EXE", "PIE", "RET", "SIM", "PL", "PERF", "FURB", "LOG", "RUF"]
+
+[tool.ruff]
+line-length = 120
+ignore = ["PLR6301", "F401", "COM812"]

@@ -1,10 +1,9 @@
+*.code-workspace
+*.spec
+*.dll
 .vscode
+.ruff_cache
+__pycache__
 logs
 dist
 build
-upx
-__pycache__
-*.spec
-*.dll
-changes.txt
-*.code-workspace
