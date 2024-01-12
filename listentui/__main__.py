@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
 
-from listentui.main import ListentuiApp
+from listentui.app import run as run_app
 
 if __package__ is None and not getattr(sys, "frozen", False):  # type: ignore
     # direct call of __main__.py
@@ -12,9 +12,8 @@ if __package__ is None and not getattr(sys, "frozen", False):  # type: ignore
 
 
 def run():
-    app = ListentuiApp()
-    app.run()
+    run_app()
 
 
 if __name__ == "__main__":
-    run()
+    run_app()
