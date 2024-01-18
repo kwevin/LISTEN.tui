@@ -4,7 +4,6 @@ from time import time
 from typing import Any, Literal, NewType, Optional, Self, Type, Union
 
 from markdownify import markdownify  # type: ignore
-from rich.markdown import Markdown
 
 AlbumID = NewType("AlbumID", int)
 ArtistID = NewType("ArtistID", int)
@@ -42,7 +41,7 @@ class User:
     uuid: str
     username: str
     display_name: str
-    bio: Markdown | None
+    bio: str | None
     favorites: int
     uploads: int
     requests: int
@@ -53,8 +52,8 @@ class User:
         self.link = f"https://listen.moe/u/{self.username}"
 
     @staticmethod
-    def convert_to_markdown(string: str) -> Markdown:
-        return Markdown(markdownify(string))  # type: ignore
+    def convert_to_markdown(string: str) -> str:
+        return markdownify(string)  # type: ignore
 
 
 @dataclass

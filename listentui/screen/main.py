@@ -8,7 +8,8 @@ from textual.widgets import Button, ContentSwitcher, Footer, Placeholder
 from ..data.config import Config
 from ..data.theme import Theme
 from ..utilities import ListenLog
-from ..widgets import History, ListenWebsocket, Player, Search, Topbar
+from ..widgets import HistoryPage, ListenWebsocket, PlayerPage, SearchPage, Topbar
+from ..widgets.user import UserPage
 
 
 class Main(Screen[None]):
@@ -41,11 +42,11 @@ class Main(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Topbar()
         with ContentSwitcher(initial="home"):
-            yield Player(id="home")
-            yield Search(id="search")
-            yield History(id="history")
+            yield PlayerPage(id="home")
+            yield SearchPage(id="search")
+            yield HistoryPage(id="history")
             yield Placeholder(id="terminal")
-            yield Placeholder(id="user")
+            yield UserPage(id="user")
             yield ListenLog.rich_log
             yield Placeholder(id="setting")
         yield Footer()

@@ -53,23 +53,23 @@ class FavoriteToggleButton(Button):
         self.post_message(self.Toggled(self.is_active))
 
 
-class Search(Widget):
+class SearchPage(Widget):
     DEFAULT_CSS = """
-    Search Input {
+    SearchPage Input {
         width: 1fr;
         height: auto;
     }
-    Search Horizontal {
+    SearchPage Horizontal {
         height: auto;
     }
-    Search Button {
+    SearchPage Button {
         margin-left: 1;
     }
-    Search DataTable {
+    SearchPage DataTable {
         width: 1fr;
         height: 1fr;
     }
-    Search DataTable > .datatable--cursor {
+    SearchPage DataTable > .datatable--cursor {
         text-style: bold underline;
     }
     """

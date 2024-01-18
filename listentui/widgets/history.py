@@ -17,13 +17,13 @@ from ..listen.types import PlayStatistics, Song, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
 
 
-class History(Widget):
+class HistoryPage(Widget):
     DEFAULT_CSS = """
-    History DataTable {
+    HistoryPage DataTable {
         width: 1fr;
         height: 1fr;
     }
-    History DataTable > .datatable--cursor {
+    HistoryPage DataTable > .datatable--cursor {
         text-style: bold underline;
     }
     """

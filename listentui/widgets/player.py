@@ -63,6 +63,7 @@ class PlayButton(Button):
 
     def __init__(self):
         super().__init__("Pause")
+        self.can_focus = False
 
     def watch_is_playing(self, new: bool) -> None:
         self.label = "Pause" if new else "Play"
@@ -161,37 +162,37 @@ class VolumeButton(Button):
         self.volume += 1
 
 
-class Player(Widget):
+class PlayerPage(Widget):
     DEFAULT_CSS = f"""
-    Player {{
+    PlayerPage {{
         align: center middle;
         layers: below above;
         background: {Theme.BACKGROUND}
     }}
-    Player MPVStreamPlayer {{
+    PlayerPage MPVStreamPlayer {{
         layer: above;
         width: 100%;
         height: 100%;
     }}
-    Player Vertical {{
+    PlayerPage Vertical {{
         height: auto;
         margin: 0 12 0 12;
     }}
-    Player #buttons {{
+    PlayerPage #buttons {{
         align: left middle;
         height: auto;
         width: 1fr;
     }}
-    Player Button {{
+    PlayerPage Button {{
         margin: 1 2 0 0;
     }}
-    Player #filler {{
+    PlayerPage #filler {{
         width: 1fr;
     }}
-    Player VolumeButton {{
+    PlayerPage VolumeButton {{
         margin: 1 0 0 0;
     }}
-    Player VanityBar {{
+    PlayerPage VanityBar {{
         margin: 0 1 1 1;
     }}
     """
