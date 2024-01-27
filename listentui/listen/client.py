@@ -10,6 +10,7 @@ from typing import Any, Callable, Coroutine, Optional, Self, Union, overload
 from gql import Client, gql
 from gql.client import ReconnectingAsyncClientSession
 from gql.transport.aiohttp import AIOHTTPTransport
+from gql.transport.exceptions import TransportQueryError
 from graphql import DocumentNode
 
 from .types import (
@@ -312,8 +313,8 @@ class ListenClient:
         )
 
     @classmethod
-    async def login(cls, username: str, password: str, user_token: Optional[str] = None) -> Self:
-        """return a new instance of ListenClient with a logged in user"""
+    async def login(cls, username: str, password: str, user_token: Optional[str] = None) -> Self | None:
+        """return a new instance of ListenClient with a logged in user else None if the login failed"""
         if user_token and not cls.validate_token(user_token):
             return await cls.login(username, password)
 
@@ -339,8 +340,11 @@ class ListenClient:
                 "systemOffset": cls.SYSTEM_OFFSET,
                 "systemCount": cls.SYSTEM_COUNT,
             }
-            async with client as session:
-                res: dict[str, Any] = await session.execute(document=query.login, variable_values=params)  # pyright: ignore
+            try:
+                async with client as session:
+                    res: dict[str, Any] = await session.execute(document=query.login, variable_values=params)  # pyright: ignore
+            except TransportQueryError:
+                return None
             user: dict[str, Any] = res["login"]["user"]
             token: str = res["login"]["token"]
 

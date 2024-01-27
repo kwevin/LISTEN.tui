@@ -87,12 +87,13 @@ class DurationProgressBar(Widget):
         self.current += 1
 
     def update_progress(self, data: ListenWsData):
+        # TODO: sometime this is inaccurate? i dont know whats wrong
         self.time_end = data.song.time_end
         if data.song.duration:
             self.current = (datetime.now(timezone.utc) - data.start_time).total_seconds()
         else:
             self.current = 0
-        self.total = data.song.duration if data.song.duration else 0
+        self.total = data.song.duration or 0
 
         self.query_one(ProgressBar).update(total=self.total if self.total != 0 else None, progress=self.current)
 
@@ -110,11 +111,11 @@ class ListenWebsocket(Widget):
         align: left middle;
         height: 5;
         padding: 1 1 1 2;
-        background: {Theme.BUTTON_BACKGROUND} ;
+        background: {Theme.BUTTON_BACKGROUND};
     }}
     """
 
-    class WebsocketUpdated(Message):
+    class Updated(Message):
         def __init__(self, data: ListenWsData) -> None:
             super().__init__()
             self.data = data
@@ -137,7 +138,7 @@ class ListenWebsocket(Widget):
         self.loading = True
         self.websocket()
 
-    @work(group="websocket", name="ListenWebsocket")
+    @work(exclusive=True, group="websocket")
     async def websocket(self) -> None:
         async for self._ws in websockets.connect("wss://listen.moe/gateway_v2", ping_interval=None, ping_timeout=None):
             try:
@@ -147,11 +148,11 @@ class ListenWebsocket(Widget):
                         case 1:
                             self._data = ListenWsData.from_data(self._ws_data)
                             self.query_one(DurationProgressBar).update_progress(self._data)
-                            self.post_message(self.WebsocketUpdated(self._data))
+                            self.post_message(self.Updated(self._data))
                             self.query_one(SongContainer).song = self._data.song
                         case 0:
                             self.loading = False
-                            self.ws_keepalive(self._ws_data["d"]["heartbeat"] / 1000)
+                            self.keepalive = self.ws_keepalive(self._ws_data["d"]["heartbeat"] / 1000)
                         case 10:
                             self._last_heartbeat = time.time()
                         case _:
@@ -160,13 +161,14 @@ class ListenWebsocket(Widget):
                 return
             except ConnectionClosedError:
                 self._log.exception("Websocket Connection Closed Unexpectedly")
+                self.keepalive.cancel()
                 continue
 
-    @work(group="websocket", name="ListenWebsocketKeepalive")
+    @work(exclusive=True, group="ws_keepalive")
     async def ws_keepalive(self, interval: int = 35) -> None:
         try:
             while True:
                 await asyncio.sleep(interval)
                 await self._ws.send(json.dumps({"op": 9}))
-        except ConnectionClosedOK:
+        except (ConnectionClosedOK, ConnectionError):
             return

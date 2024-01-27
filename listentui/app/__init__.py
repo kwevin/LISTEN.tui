@@ -1,3 +1,3 @@
 from .app import ListentuiApp, run
 
-__all__ = ["run", "ListentuiApp"]
+__all__ = ["ListentuiApp", "run"]

@@ -23,23 +23,15 @@ class MPVStreamPlayer(Widget):
     is_playing: reactive[bool] = reactive(True, init=False)
     volume: reactive[int] = reactive(100, init=False)
 
-    class Play(Message):
-        def __init__(self) -> None:
-            super().__init__()
-
-    class Paused(Message):
+    class Restarted(Message):
         def __init__(self) -> None:
             super().__init__()
 
     def __init__(self) -> None:
-        self.mpv_options = Config.get_config().player.mpv_options.copy()
-        self.mpv_options["volume"] = Config.get_config().persistant.volume
-        if Config.get_config().player.dynamic_range_compression and not self.mpv_options.get("af"):
-            self.mpv_options["af"] = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5"
+        super().__init__()
         self._log = getLogger(__name__)
         self.stream_url = "https://listen.moe/stream"
-        self.player = mpv.MPV(**self.mpv_options)
-        super().__init__()
+        self.player = mpv.MPV(**self.get_options())
 
     @property
     def core_idle(self) -> bool:
@@ -57,71 +49,72 @@ class MPVStreamPlayer(Widget):
         except (RuntimeError, mpv.ShutdownError):
             return None
 
+    def get_options(self) -> dict[str, Any]:
+        mpv_options = Config.get_config().player.mpv_options.copy()
+        mpv_options["volume"] = Config.get_config().persistant.volume
+        if Config.get_config().player.dynamic_range_compression and not mpv_options.get("af"):
+            mpv_options["af"] = "acompressor=ratio=4,loudnorm=I=-16:LRA=11:TP=-1.5"
+
+        return mpv_options
+
     def on_mount(self) -> None:
-        self.loading = True
-        self.run_player()
+        self.init_player()
 
     def on_unmount(self) -> None:
+        Config.get_config().save()
         self.player.terminate()
 
-    def watch_is_playing(self, new: bool) -> None:
-        if new:
-            self.player.pause = False
-            self.restart_player()
-        else:
-            self.player.pause = True
-            self.post_message(self.Paused())
-
-    def watch_volume(self, new: int) -> None:
-        self.player.volume = new
-
-    @work(group="run_player", name="run_player")
-    async def run_player(self) -> None:
-        await self.restart_player().wait()
-        self.restarter()
+    @work(group="player")
+    async def init_player(self) -> None:
+        self.loading = True
+        await self.reset().wait()
+        self.restart_worker = self.restarter()
         self.loading = False
         self.styles.display = "none"
 
-    @work(exclusive=True, group="restart_player", name="restart_player", thread=True)
-    def restart_player(self) -> None:
-        self.player.play(self.stream_url)
-        self.wait_until_playing()
+    @work(group="player")
+    async def watch_is_playing(self, new: bool) -> None:
+        if new:
+            self.player.pause = False
+            self.reset()
+        else:
+            self.player.pause = True
 
-    @work(group="restarter", name="mpv_restarter")
+    def watch_volume(self, new: int) -> None:
+        config = Config.get_config()
+        config.persistant.volume = new
+        self.player.volume = new
+
+    @work(exclusive=True, group="player_reset", thread=True)
+    def reset(self) -> None:
+        # this needs to be a threaded method i dont know why
+        self.player.play(self.stream_url)
+        self.player.wait_until_playing()
+        self.post_message(self.Restarted())
+
+    @work(exclusive=True, group="player_restarter")
     async def restarter(self) -> None:
         timeout = Config.get_config().player.timeout_restart
 
         counter = 0
         while True:
             if self.core_idle and not self.paused:
-                self._log.debug(f"idle: {self.core_idle} | paused: {self.paused} | timeout: {counter}")
+                self._log.debug(f"idle: {self.core_idle} | paused: {self.paused} | timeout: {counter}/{timeout}")
                 counter += 1
             else:
                 counter = 0
             if counter == timeout:
-                self.hard_reset()
+                self.hard_restart()
+                counter = 0
                 self._log.debug(f"Player timeout exceed: {timeout}s")
             await asyncio.sleep(1)
-            # while self.core_idle and not self.paused:
-            #     while counter < timeout:
-            #         self._log.debug(f"Player idling detected: {counter}")
-            #         self._log.debug(f"core: {self.core_idle} - paused: {self.paused}")
-            #         counter += 1
-            #         await asyncio.sleep(1)
-            #     self.hard_reset()
-            #     self._log.debug(f"Player timeout exceed: {timeout}s")
-            #     break
-            # await asyncio.sleep(1)
 
-    def hard_reset(self) -> None:
+    @work(group="player")
+    async def hard_restart(self) -> None:
         self.player.terminate()
-        self.post_message(self.Paused())
-        self.player = mpv.MPV(**self.mpv_options)
-        self.restart_player()
-
-    def wait_until_playing(self) -> None:
-        self.player.wait_until_playing()
-        self.post_message(self.Play())
+        self.player = mpv.MPV(**self.get_options())
+        self.restarter()
+        self.reset()
 
     def log_handler(self, loglevel: str, component: str, message: str):
         if component == "display-tags":

@@ -25,15 +25,15 @@ class Client:
 
 
 @dataclass
-class RichPresence:
+class Presence:
     enable: bool = True
     """Enable discord's rich presence"""
     default_placeholder: str = " ♪"
     """Text to add to achieve minimum length requirement (must be at least 2 characters)"""
     use_fallback: bool = True
     """Whether to use a fallback image when no image is present"""
-    fallback: str = "fallback2"
-    """Fallback to use when there is no image present ("fallback2" for LISTEN.moe's icon)"""
+    fallback: str = "default"
+    """Fallback to use when there is no image present ("default" for LISTEN.moe's icon)"""
     use_artist: bool = True
     """Whether to use artist image as image when no album image is present"""
     detail: str = "${title}"
@@ -93,7 +93,7 @@ class Persistant:
 @dataclass
 class DefaultConfig:
     client: Client = field(default_factory=Client)
-    presence: RichPresence = field(default_factory=RichPresence)
+    presence: Presence = field(default_factory=Presence)
     display: Display = field(default_factory=Display)
     player: Player = field(default_factory=Player)
     persistant: Persistant = field(default_factory=Persistant)
@@ -105,19 +105,24 @@ class Config:
     def __init__(self) -> None:
         self.config_root = self._config_root()
         self.config_file = self.config_root.joinpath("config.toml")
+        self._conf: dict[str, Any] = {}
         self._client: Client
-        self._rich_presence: RichPresence
+        self._rich_presence: Presence
         self._display: Display
         self._player: Player
         self._load_config()
         Config.config = self
 
     @property
+    def config_raw(self) -> dict[str, Any]:
+        return self._conf
+
+    @property
     def client(self):
         return self._client
 
     @property
-    def rpc(self):
+    def presence(self):
         return self._rich_presence
 
     @property
@@ -153,16 +158,16 @@ class Config:
     def _load_config(self) -> None:
         if not self.config_file.is_file():
             self._write_config(self._default())
-            _conf = self._default()
+            self._conf = self._default()
         else:
             with open(self.config_file, "rb") as f:
-                _conf = tomli.load(f)
+                self._conf = tomli.load(f)
 
-        self._client = Client(**_conf["client"])
-        self._rich_presence = RichPresence(**_conf["presence"])
-        self._display = Display(**_conf["display"])
-        self._player = Player(**_conf["player"])
-        self._persistant = Persistant(**_conf["persistant"])
+        self._client = Client(**self._conf["client"])
+        self._rich_presence = Presence(**self._conf["presence"])
+        self._display = Display(**self._conf["display"])
+        self._player = Player(**self._conf["player"])
+        self._persistant = Persistant(**self._conf["persistant"])
 
         # getLogger(__name__).debug(f"Loaded config: {pretty_repr(self.__dict__)}")
 

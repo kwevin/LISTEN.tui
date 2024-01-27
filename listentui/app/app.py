@@ -15,20 +15,25 @@ class ListentuiApp(App[None]):
         await self.login().wait()
         self.push_screen(Main())
 
-    @work(group="login", name="login")
+    @work
     async def login(self) -> None:
-        username = Config.get_config().client.username
-        password = Config.get_config().client.password
-        token = Config.get_config().persistant.token
+        config = Config.get_config()
+        username = config.client.username
+        password = config.client.password
+        token = config.persistant.token
         if username and password:
             client = await ListenClient.login(username, password, token)
+            if not client:
+                print("Login failed, please check your username and password")
+                return
         else:
             client = ListenClient.get_instance()
 
         user = client.current_user
         if user and user.token:
-            Config.get_config().persistant.token = user.token
-            Config.get_config().save()
+            config = Config.get_config()
+            config.persistant.token = user.token
+            config.save()
 
 
 def run() -> None:

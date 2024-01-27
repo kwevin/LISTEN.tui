@@ -10,14 +10,15 @@ from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.reactive import reactive, var
 from textual.validation import Function
-from textual.widget import Widget
-from textual.widgets import Button, DataTable, Input
+from textual.widgets import Button, Input
 
 from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
 from ..listen.types import Song, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
+from .base import BasePage
+from .datatable import VimDataTable as DataTable
 
 
 class FavoriteToggleButton(Button):
@@ -27,6 +28,7 @@ class FavoriteToggleButton(Button):
     }}
     FavoriteToggleButton.-toggled {{
         background: {Theme.ACCENT};
+        text-style: bold reverse;
     }}
     """
     is_active: reactive[bool] = reactive(False, init=False, layout=True)
@@ -53,7 +55,7 @@ class FavoriteToggleButton(Button):
         self.post_message(self.Toggled(self.is_active))
 
 
-class SearchPage(Widget):
+class SearchPage(BasePage):
     DEFAULT_CSS = """
     SearchPage Input {
         width: 1fr;
@@ -63,7 +65,7 @@ class SearchPage(Widget):
         height: auto;
     }
     SearchPage Button {
-        margin-left: 1;
+        margin: 1 1;
     }
     SearchPage DataTable {
         width: 1fr;
@@ -97,7 +99,7 @@ class SearchPage(Widget):
             # yield Button("This", id="this") # TODO: requests
         yield DataTable()
 
-    def on_show(self) -> None:
+    def on_focus(self) -> None:
         self.query_one(Input).focus()
 
     def search_song(self, song_id: SongID) -> Song | None:
@@ -108,7 +110,7 @@ class SearchPage(Widget):
 
     @work(group="table")
     async def on_mount(self) -> None:
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         data_table.add_column("Id")
         data_table.add_column("Track", width=self.title_max_width)
         data_table.add_column("Artists", width=self.artist_max_width)
@@ -130,7 +132,7 @@ class SearchPage(Widget):
     @work(group="table")
     async def watch_search_result(self, result: list[Song]) -> None:
         romaji_first = Config.get_config().display.romaji_first
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         data_table.clear()
         if len(result) == 0:
             return
@@ -140,8 +142,8 @@ class SearchPage(Widget):
         for song in result:
             row = [
                 Text(str(song.id), style=f"bold {Theme.ACCENT}") if favorites.get(song.id) else Text(str(song.id)),
-                self.ellipses(song.format_title(romaji_first=romaji_first), self.title_max_width),
-                self.ellipses(song.format_artists(romaji_first=romaji_first), self.artist_max_width),
+                self.ellipsis(song.format_title(romaji_first=romaji_first), self.title_max_width),
+                self.ellipsis(song.format_artists(romaji_first=romaji_first), self.artist_max_width),
                 song.format_album(romaji_first=romaji_first),
                 song.format_source(romaji_first=romaji_first),
             ]
@@ -150,7 +152,7 @@ class SearchPage(Widget):
 
     @work(group="table")
     async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:  # noqa: PLR0912
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         column = event.coordinate.column
         if column == 1:  # TODO: make this request the song instead
             return
@@ -227,7 +229,7 @@ class SearchPage(Widget):
     def on_favorite_toggle_pressed(self, event: FavoriteToggleButton.Toggled) -> None:
         self.favorites_only = event.state
 
-    def ellipses(self, text: str | None, max_length: int) -> str:
+    def ellipsis(self, text: str | None, max_length: int) -> str:
         if not text:
             return ""
         return text if len(text) <= max_length else text[: max_length - 3] + "..."

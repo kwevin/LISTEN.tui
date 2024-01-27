@@ -88,7 +88,6 @@ class SelectionScreen(ModalScreen[int | None]):
         self.focus_next()
 
     def on_option_button_selected(self, event: OptionButton.Selected) -> None:
-        self.notify(f"Selected {event.index}")
         self.dismiss(event.index)
 
     def on_key(self, event: events.Key) -> None:

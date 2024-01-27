@@ -1,34 +1,32 @@
-from textual import on
 from textual.app import ComposeResult
 from textual.events import Key
 from textual.reactive import var
 from textual.screen import Screen
-from textual.widgets import Button, ContentSwitcher, Footer, Placeholder
+from textual.widgets import Footer, Placeholder, TabbedContent, TabPane
 
 from ..data.config import Config
 from ..data.theme import Theme
 from ..utilities import ListenLog
-from ..widgets import HistoryPage, ListenWebsocket, PlayerPage, SearchPage, Topbar
+from ..widgets import HistoryPage, ListenWebsocket, PlayerPage, SearchPage, SettingPage
 from ..widgets.user import UserPage
 
 
 class Main(Screen[None]):
     DEFAULT_CSS = """
-    Main ContentSwitcher > * {
+    Main TabPane {
         width: 1fr;
         height: 1fr;
     }
     """
-
     index: var[int] = var(0, init=False)
 
     def __init__(self) -> None:
         super().__init__()
         self.content = ["home", "search", "history", "terminal", "user", "setting"]
-        self.content.insert(len(self.content) - 1, "_rich-log")
+        self.content.insert(len(self.content) - 1, "log")
 
     def watch_index(self, value: int) -> None:
-        self.query_one(ContentSwitcher).current = self.content[value]
+        self.query_one(TabbedContent).active = self.content[value]
 
     def validate_index(self, value: int) -> int:
         max_idx = len(self.content) - 1
@@ -40,33 +38,41 @@ class Main(Screen[None]):
         return value
 
     def compose(self) -> ComposeResult:
-        yield Topbar()
-        with ContentSwitcher(initial="home"):
-            yield PlayerPage(id="home")
-            yield SearchPage(id="search")
-            yield HistoryPage(id="history")
-            yield Placeholder(id="terminal")
-            yield UserPage(id="user")
-            yield ListenLog.rich_log
-            yield Placeholder(id="setting")
+        with TabbedContent():
+            with TabPane("Home", id="home"):
+                yield PlayerPage()
+            with TabPane("Search", id="search"):
+                yield SearchPage()
+            with TabPane("History", id="history"):
+                yield HistoryPage()
+            with TabPane("Terminal", id="terminal"):
+                yield Placeholder()
+            with TabPane("User", id="user"):
+                yield UserPage()
+            with TabPane("Setting", id="setting"):
+                yield SettingPage()
         yield Footer()
 
-    @on(Button.Pressed, ".navbutton")
-    def on_button_content_switcher(self, event: Button.Pressed) -> None:
-        button_id = event.button.id
-        if button_id:
-            index = self.content.index(button_id)
-            self.index = index
-        self.query_one(f"ContentSwitcher > #{event.button.id}").focus()
+    def on_mount(self) -> None:
+        self.query_one(TabbedContent).add_pane(TabPane("Log", ListenLog.rich_log, id="log"), before="setting")
 
-    async def on_key(self, event: Key) -> None:
+    def on_tabbed_content_tab_activated(self, tab: TabbedContent.TabActivated) -> None:
+        tab_id = tab.pane.id
+        if not tab_id:
+            return
+        self.index = self.content.index(tab_id)
+
+    def on_key(self, event: Key) -> None:
         if event.key == "tab":
+            event.prevent_default()
             self.index += 1
         elif event.key == "shift+tab":
+            event.prevent_default()
             self.index -= 1
 
-    def on_listen_websocket_websocket_updated(self, event: ListenWebsocket.WebsocketUpdated) -> None:
+    def on_listen_websocket_updated(self, event: ListenWebsocket.Updated) -> None:
         romaji_first = Config.get_config().display.romaji_first
         title = event.data.song.format_title(romaji_first=romaji_first)
         artist = event.data.song.format_artists(romaji_first=romaji_first)
         self.notify(f"{title}" + f" by [{Theme.ACCENT}]{artist}[/]" if artist else "", title="Now Playing")
+        self.app.query_one(HistoryPage).action_refresh()

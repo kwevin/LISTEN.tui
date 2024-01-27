@@ -1,8 +1,8 @@
 from .history import HistoryPage
 from .player import PlayerPage
 from .search import SearchPage
-from .topbar import Topbar
+from .setting import SettingPage
 from .user import UserPage
 from .websocket import ListenWebsocket
 
-__all__ = ["Topbar", "PlayerPage", "SearchPage", "HistoryPage", "ListenWebsocket", "UserPage"]
+__all__ = ["HistoryPage", "ListenWebsocket", "PlayerPage", "SearchPage", "SettingPage", "UserPage"]

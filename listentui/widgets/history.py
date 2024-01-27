@@ -1,4 +1,5 @@
 import webbrowser
+from datetime import datetime
 from typing import Any, ClassVar
 
 from rich.text import Text
@@ -7,17 +8,18 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.coordinate import Coordinate
 from textual.reactive import var
-from textual.widget import Widget
-from textual.widgets import DataTable
+from textual.widgets import Label
 
 from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
 from ..listen.types import PlayStatistics, Song, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
+from .base import BasePage
+from .datatable import VimDataTable as DataTable
 
 
-class HistoryPage(Widget):
+class HistoryPage(BasePage):
     DEFAULT_CSS = """
     HistoryPage DataTable {
         width: 1fr;
@@ -25,6 +27,9 @@ class HistoryPage(Widget):
     }
     HistoryPage DataTable > .datatable--cursor {
         text-style: bold underline;
+    }
+    HistoryPage > Label {
+        padding: 0 0 1 1;
     }
     """
     BINDINGS: ClassVar[list[BindingType]] = [Binding("ctrl+r", "refresh", "Refresh")]
@@ -36,10 +41,11 @@ class HistoryPage(Widget):
         self.client = ListenClient.get_instance()
 
     def compose(self) -> ComposeResult:
+        yield Label(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
         yield DataTable()
 
-    def on_show(self) -> None:
-        self.update_history()
+    def on_focus(self) -> None:
+        self.query_one(DataTable).focus()
 
     def search_song(self, song_id: SongID) -> Song | None:
         for history in self.history_result:
@@ -47,8 +53,9 @@ class HistoryPage(Widget):
                 return history.song
         return None
 
+    @work(group="table")
     async def on_mount(self) -> None:
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         data_table.add_column("Id")
         data_table.add_column("Track", width=50)
         data_table.add_column("Requested By")
@@ -56,11 +63,12 @@ class HistoryPage(Widget):
         data_table.add_column("Artists", width=40)
         data_table.add_column("Album")
         data_table.add_column("Source")
+        self.update_history()
 
     @work(group="table")
     async def watch_history_result(self, histories: list[PlayStatistics]) -> None:
         romaji_first = Config.get_config().display.romaji_first
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         data_table.clear()
         favorites: dict[SongID, bool] = {}
         if self.client.logged_in:
@@ -69,19 +77,19 @@ class HistoryPage(Widget):
             song = history.song
             row = [
                 Text(str(song.id), style=f"bold {Theme.ACCENT}") if favorites.get(song.id) else Text(str(song.id)),
-                self.ellipses(song.format_title(romaji_first=romaji_first), 50),
+                self.ellipsis(song.format_title(romaji_first=romaji_first), 50),
                 Text(str(history.requester.display_name), style=f"bold {Theme.ACCENT}") if history.requester else "",
                 history.created_at.strftime("%d-%m-%Y %H:%M:%S"),
-                self.ellipses(song.format_artists(romaji_first=romaji_first), 40),
+                self.ellipsis(song.format_artists(romaji_first=romaji_first), 40),
                 song.format_album(romaji_first=romaji_first),
                 song.format_source(romaji_first=romaji_first),
             ]
-            data_table.add_row(*row, key=f"{song.id}")
+            data_table.add_row(*row)
         data_table.refresh(layout=True)
 
     @work(group="table")
     async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:  # noqa: PLR0912
-        data_table: DataTable[Any] = self.query_one(DataTable)
+        data_table = self.query_one(DataTable)
         column = event.coordinate.column
         if column == 1:  # TODO: make this request the song instead
             return
@@ -134,15 +142,16 @@ class HistoryPage(Widget):
 
     @work(group="table")
     async def update_history(self) -> None:
-        self.query_one(DataTable).loading = True
+        data_table = self.query_one(DataTable)
+        data_table.loading = True
         self.history_result = await self.client.history(100, 0)
-        self.query_one(DataTable).loading = False
-        self.query_one(DataTable).focus()
+        data_table.loading = False
 
     def action_refresh(self) -> None:
         self.update_history()
+        self.query_one(Label).update(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
 
-    def ellipses(self, text: str | None, max_length: int) -> str:
+    def ellipsis(self, text: str | None, max_length: int) -> str:
         if not text:
             return ""
         return text if len(text) <= max_length else text[: max_length - 1] + "…"

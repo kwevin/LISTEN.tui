@@ -5,13 +5,14 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
-from textual.widget import Widget
 from textual.widgets import Button, Label, Static
 
 from ..data import Config, Theme
 from ..listen import Event, Requester
 from ..listen.client import ListenClient
-from .mpv import MPVStreamPlayer
+from .base import BasePage
+from .containers import SongContainer
+from .mpvplayer import MPVStreamPlayer
 from .websocket import ListenWebsocket
 
 
@@ -39,12 +40,10 @@ class VanityBar(Horizontal):
     def watch_event(self, value: Event | Requester | None) -> None:
         if isinstance(value, Event):
             self.query_one("#event", Label).update(
-                f"[{Theme.ACCENT}]♫♪.ılılıll {value.name} llılılı.♫♪[{Theme.ACCENT}]"  # noqa: RUF001
+                f"[{Theme.ACCENT}]♫♪.ılılıll {value.name} llılılı.♫♪[/]"  # noqa: RUF001
             )
         elif isinstance(value, Requester):
-            self.query_one("#event", Label).update(
-                f"Requested by [{Theme.ACCENT}]{value.display_name}[/{Theme.ACCENT}]"
-            )
+            self.query_one("#event", Label).update(f"Requested by [{Theme.ACCENT}]{value.display_name}[/]")
         else:
             self.query_one("#event", Label).update("")
 
@@ -58,6 +57,9 @@ class PlayButton(Button):
     PlayButton {{
         background: {Theme.BUTTON_BACKGROUND};
     }}
+    PlayButton.-disabled {{
+        tint: black 80%;
+    }}
     """
     is_playing: reactive[bool] = reactive(True, init=False, layout=True)
 
@@ -69,16 +71,18 @@ class PlayButton(Button):
         self.label = "Pause" if new else "Play"
         self.app.query_one(MPVStreamPlayer).is_playing = new
         if new:
-            self.disable_until_playing()
+            self.disable()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.is_playing = not self.is_playing
 
-    @work(group="player", name="disable_until_playing", thread=True)
-    def disable_until_playing(self) -> None:
-        self.disabled = True
-        self.app.query_one(MPVStreamPlayer).wait_until_playing()
+    def enable(self) -> None:
+        # self.remove_class("-disabled")
         self.disabled = False
+
+    def disable(self) -> None:
+        # self.add_class("-disabled")
+        self.disabled = True
 
 
 class FavoriteButton(Button):
@@ -86,7 +90,7 @@ class FavoriteButton(Button):
     FavoriteButton {{
         background: {Theme.BUTTON_BACKGROUND};
     }}
-    FavoriteButton.-favorited {{
+    FavoriteButton.-toggled {{
         background: {Theme.ACCENT};
         text-style: bold reverse;
     }}
@@ -95,6 +99,7 @@ class FavoriteButton(Button):
 
     def __init__(self):
         super().__init__("Favorite")
+        self.can_focus = False
 
     async def on_mount(self) -> None:
         self.can_focus = False
@@ -103,13 +108,13 @@ class FavoriteButton(Button):
             self.disabled = True
 
     def watch_is_favorited(self, new: bool) -> None:
-        self.add_class("-favorited") if new else self.remove_class("-favorited")
+        self.add_class("-toggled") if new else self.remove_class("-toggled")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         self.is_favorited = not self.is_favorited
         self.favorite()
 
-    @work(group="gql")
+    @work(group="player_button")
     async def favorite(self) -> None:
         client = ListenClient.get_instance()
         data = self.app.query_one(ListenWebsocket).data
@@ -122,7 +127,7 @@ class VolumeButton(Button):
     VolumeButton {{
         background: {Theme.BUTTON_BACKGROUND};
     }}
-    VolumeButton.-muted {{
+    VolumeButton.-toggled {{
         background: {Theme.ACCENT};
         text-style: bold reverse;
     }}
@@ -132,6 +137,7 @@ class VolumeButton(Button):
 
     def __init__(self):
         super().__init__(f"Volume: {self.volume}")
+        self.can_focus = False
 
     def watch_volume(self, new: int) -> None:
         self.label = f"Volume: {new}"
@@ -140,7 +146,7 @@ class VolumeButton(Button):
 
     def watch_is_muted(self, new: bool) -> None:
         self.label = "Muted" if new else f"Volume: {self.volume}"
-        self.add_class("-muted") if new else self.remove_class("-muted")
+        self.add_class("-toggled") if new else self.remove_class("-toggled")
         self.app.query_one(MPVStreamPlayer).volume = 0 if new else self.volume
 
     def validate_volume(self, volume: int) -> int:
@@ -162,7 +168,7 @@ class VolumeButton(Button):
         self.volume += 1
 
 
-class PlayerPage(Widget):
+class PlayerPage(BasePage):
     DEFAULT_CSS = f"""
     PlayerPage {{
         align: center middle;
@@ -181,7 +187,7 @@ class PlayerPage(Widget):
     PlayerPage #buttons {{
         align: left middle;
         height: auto;
-        width: 1fr;
+        width: 100%;
     }}
     PlayerPage Button {{
         margin: 1 2 0 0;
@@ -219,28 +225,25 @@ class PlayerPage(Widget):
                 yield Static(id="filler")
                 yield VolumeButton()
 
-    def on_unmount(self) -> None:
-        Config.get_config().save()
-
-    def on_show(self, event: events.Show) -> None:
-        self.query_one(VolumeButton).focus()
+    def on_mount(self) -> None:
+        return
 
     def action_play_pause(self) -> None:
         play_button = self.query_one(PlayButton)
         play_button.is_playing = not play_button.is_playing
 
-    async def action_favorite(self) -> None:
+    def action_favorite(self) -> None:
         favorite_button = self.query_one(FavoriteButton)
         favorite_button.is_favorited = not favorite_button.is_favorited
         favorite_button.favorite()
 
     def action_volume_up(self) -> None:
         volume_button = self.query_one(VolumeButton)
-        volume_button.volume += 5
+        volume_button.volume += Config.get_config().player.volume_step
 
     def action_volume_down(self) -> None:
         volume_button = self.query_one(VolumeButton)
-        volume_button.volume -= 5
+        volume_button.volume -= Config.get_config().player.volume_step
 
     def action_mute(self) -> None:
         volume_button = self.query_one(VolumeButton)
@@ -248,14 +251,28 @@ class PlayerPage(Widget):
 
     def action_restart(self) -> None:
         self.query_one(PlayButton).is_playing = True
-        self.query_one(PlayButton).disable_until_playing()
-        self.query_one(MPVStreamPlayer).hard_reset()
+        self.query_one(MPVStreamPlayer).hard_restart()
 
-    @on(ListenWebsocket.WebsocketUpdated)
-    async def on_listen_websocket_websocket_updated(self, event: ListenWebsocket.WebsocketUpdated) -> None:
+    @on(MPVStreamPlayer.Restarted)
+    def on_player_restart(self, event: MPVStreamPlayer.Restarted) -> None:
+        self.query_one(PlayButton).enable()
+        if self.query_one(VolumeButton).is_muted:
+            self.query_one(MPVStreamPlayer).volume = 0
+
+    @on(ListenWebsocket.Updated)
+    async def on_listen_websocket_updated(self, event: ListenWebsocket.Updated) -> None:
         self.query_one(VanityBar).listener = event.data.listener
         self.query_one(VanityBar).event = event.data.event or event.data.requester
         client = ListenClient.get_instance()
         if client.logged_in:
             favorited = await client.check_favorite(event.data.song.id)
             self.query_one(FavoriteButton).is_favorited = favorited
+
+        # set romaji tooltip
+        # TODO: make this a setting option instead
+        song = await client.song(event.data.song.id)
+        if song:
+            if song.title_romaji:
+                self.query_one("ListenWebsocket > SongContainer", SongContainer).set_tooltips(song.title_romaji)
+            else:
+                self.query_one("ListenWebsocket > SongContainer", SongContainer).set_tooltips(None)

@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
+from textual.binding import Binding, BindingType
 from textual.containers import Center, Grid, Horizontal, Middle
 from textual.reactive import reactive, var
 from textual.widget import Widget
@@ -13,6 +14,7 @@ from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
 from ..listen.types import CurrentUser, SystemFeed
+from .base import BasePage
 
 
 class NamedStatField(Widget):
@@ -100,9 +102,14 @@ class UserFeed(Widget):
         margin: 0 4 2 4;
         height: 1fr;
     }}
+    UserFeed Label {{
+        padding: 0 1;
+    }}
+    UserFeed #time {{
+        padding-bottom: 1;
+    }}
     UserFeed .feed-text {{
         margin: 1 0;
-        padding: 0 1;
     }}
     UserFeed ListItem {{
         margin: 1 0;
@@ -111,6 +118,7 @@ class UserFeed(Widget):
     """
 
     def compose(self) -> ComposeResult:
+        yield Label(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}", id="time")
         yield ListView()
 
     def watch_feeds(self, feeds: list[SystemFeed]) -> None:
@@ -125,15 +133,20 @@ class UserFeed(Widget):
             artist = feed.song.format_artists(show_character=False, romaji_first=romaji_first, embed_link=True)
             listitems.append(
                 ListItem(
-                    Label(f"• {self.format_timespan_since(feed.created_at)}", classes="feed-time"),
                     Label(
-                        Text.from_markup(f"{feed.activity} {title} by [{Theme.ACCENT}]{artist}[/]"), classes="feed-text"
+                        Text.from_markup(f"[{Theme.ACCENT}]•[/] {self.format_time_since(feed.created_at)}"),
+                        classes="feed-time",
+                    ),
+                    Label(
+                        Text.from_markup(f"{feed.activity} {title} by [{Theme.ACCENT}]{artist}[/]"),
+                        classes="feed-text",
+                        shrink=True,
                     ),
                 )
             )
         listview.extend(listitems)
 
-    def format_timespan_since(self, time: datetime) -> str:
+    def format_time_since(self, time: datetime) -> str:
         now = datetime.now()
         diff = now - time
 
@@ -147,6 +160,8 @@ class UserFeed(Widget):
         hours = diff.seconds // 3600
         minutes = (diff.seconds % 3600) // 60
 
+        if minutes == 0 and days == 0 and hours == 0:
+            return "just now"
         string: list[str] = []
         if days > 0:
             string.append(f"{round(days)} days")
@@ -154,17 +169,16 @@ class UserFeed(Widget):
             string.append(f"{round(hours)} hours")
         if minutes > 0:
             string.append(f"{round(minutes)} minutes")
-        if minutes == 0:
-            return "just now"
         string.append("ago")
 
         return " ".join(string)
 
     def update(self, user_feeds: list[SystemFeed]) -> None:
         self.feeds = user_feeds
+        self.query_one("#time", Label).update(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
 
 
-class UserPage(Widget):
+class UserPage(BasePage):
     DEFAULT_CSS = """
     UserPage UserDetails {
         height: 1fr;
@@ -175,18 +189,21 @@ class UserPage(Widget):
         height: 1fr;
     }
     """
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("ctrl+r", "refresh", "Refresh")]
 
     def compose(self) -> ComposeResult:
         yield UserDetails()
         yield UserFeed()
 
-    @work
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
+        self.action_refresh()
+
+    @work(group="user")
+    async def action_refresh(self) -> None:
         client = ListenClient.get_instance()
-        user = client.current_user
+        user = await client.update_current_user()
         if not user:
             return
-
         self.query_one(UserDetails).update(user)
         self.query_one(UserFeed).update(user.feeds)
 

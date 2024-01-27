@@ -36,7 +36,7 @@ class ScrollableLabel(Label):
         self._scroll_content.no_wrap = True
         self._scroll_content.overflow = "ellipsis"
 
-    @work(exclusive=True, group="scrollable-label", name="scrollable-label")
+    @work(exclusive=True, group="scrollable-label")
     async def scroll(self) -> None:
         max_offset: int = self._scroll_content.cell_len - self.region.width
         speed: float = 0.1
@@ -122,3 +122,6 @@ class SongContainer(Widget):
     def compose(self) -> ComposeResult:
         yield ArtistLabel()
         yield TitleLabel()
+
+    def set_tooltips(self, string: str | None) -> None:
+        self.query_one(TitleLabel).tooltip = string

@@ -417,6 +417,7 @@ class ListenWsData:
     song: Song
     requester: Requester | None
     start_time: datetime
+    """start time in utc"""
     last_played: list[Song]
     listener: int
     event: Optional[Event] = None
