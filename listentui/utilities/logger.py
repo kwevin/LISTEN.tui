@@ -1,15 +1,21 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false
-import datetime
 import logging
+import sys
+from datetime import datetime
 from logging import Handler, Logger, LogRecord
-from typing import ClassVar
+from typing import Any, ClassVar
 
+from textual._context import active_app  # noqa: PLC2701
 from textual.binding import Binding, BindingType
+from textual.css.query import QueryError
 from textual.widgets import RichLog
 
 
 class RichLogExtended(RichLog):
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("c", "clear()", "Clear")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("c", "clear", "Clear")]
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, highlight=True, markup=True, wrap=True, auto_scroll=True, **kwargs)
 
     def action_clear(self) -> None:
         self.clear()
@@ -18,22 +24,32 @@ class RichLogExtended(RichLog):
 class RichLogHandler(Handler):
     def emit(self, record: LogRecord) -> None:
         message = self.format(record)
-        if ListenLog.rich_log:
-            ListenLog.rich_log.write(message)
+        try:
+            app = active_app.get()
+        except LookupError:
+            print(message, file=sys.stdout)
+        else:
+            app.log.logging(message)
+            # write to all RichLogExtended widgets
+            try:
+                for widget in app.query(RichLogExtended):
+                    widget.write(message)
+            except QueryError:
+                pass
 
 
-class ListenLog(Logger):
-    rich_log = RichLogExtended(highlight=True, markup=True, auto_scroll=True, wrap=True, id="_rich-log")
+def get_logger() -> Logger:
+    return logging.getLogger("ListenTUI")
 
-    @staticmethod
-    def create_logger(verbose: bool) -> Logger:
-        level = logging.DEBUG if verbose else logging.ERROR
-        logging.basicConfig(
-            level=level,
-            format="(%(asctime)s)[%(levelname)s] %(name)s: %(message)s",
-            handlers=[RichLogHandler()],
-            datefmt="%H:%M:%S",
-        )
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Logging started at {datetime.datetime.now()}")
-        return logger
+
+def create_logger(verbose: bool) -> Logger:
+    level = logging.DEBUG if verbose else logging.ERROR
+    logging.basicConfig(
+        level=level,
+        format="(%(asctime)s)[%(levelname)s] %(name)s: %(message)s",
+        handlers=[RichLogHandler()],
+        datefmt="%H:%M:%S",
+    )
+    logger = logging.getLogger("ListenTUI")
+    logger.debug(f"Logging started at: {datetime.now()}")
+    return logger

@@ -14,6 +14,7 @@ from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
 from ..listen.types import CurrentUser, SystemFeed
+from ..utilities import format_time_since
 from .base import BasePage
 
 
@@ -134,7 +135,7 @@ class UserFeed(Widget):
             listitems.append(
                 ListItem(
                     Label(
-                        Text.from_markup(f"[{Theme.ACCENT}]•[/] {self.format_time_since(feed.created_at)}"),
+                        Text.from_markup(f"[{Theme.ACCENT}]•[/] {format_time_since(feed.created_at)}"),
                         classes="feed-time",
                     ),
                     Label(
@@ -145,33 +146,6 @@ class UserFeed(Widget):
                 )
             )
         listview.extend(listitems)
-
-    def format_time_since(self, time: datetime) -> str:
-        now = datetime.now()
-        diff = now - time
-
-        years = diff.days // 365
-        if years > 0:
-            return f"{years} years ago"
-        months = (diff.days % 365) // 30
-        if months > 0:
-            return f"{months} months ago"
-        days = diff.days % 30
-        hours = diff.seconds // 3600
-        minutes = (diff.seconds % 3600) // 60
-
-        if minutes == 0 and days == 0 and hours == 0:
-            return "just now"
-        string: list[str] = []
-        if days > 0:
-            string.append(f"{round(days)} days")
-        if hours > 0:
-            string.append(f"{round(hours)} hours")
-        if minutes > 0:
-            string.append(f"{round(minutes)} minutes")
-        string.append("ago")
-
-        return " ".join(string)
 
     def update(self, user_feeds: list[SystemFeed]) -> None:
         self.feeds = user_feeds
@@ -201,7 +175,8 @@ class UserPage(BasePage):
     @work(group="user")
     async def action_refresh(self) -> None:
         client = ListenClient.get_instance()
-        user = await client.update_current_user()
+        feed_amount = Config.get_config().display.user_feed_amount
+        user = await client.update_current_user(0, feed_amount)
         if not user:
             return
         self.query_one(UserDetails).update(user)

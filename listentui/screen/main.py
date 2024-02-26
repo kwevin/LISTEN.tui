@@ -6,7 +6,7 @@ from textual.widgets import Footer, Placeholder, TabbedContent, TabPane
 
 from ..data.config import Config
 from ..data.theme import Theme
-from ..utilities import ListenLog
+from ..utilities import RichLogExtended
 from ..widgets import HistoryPage, ListenWebsocket, PlayerPage, SearchPage, SettingPage
 from ..widgets.user import UserPage
 
@@ -22,8 +22,10 @@ class Main(Screen[None]):
 
     def __init__(self) -> None:
         super().__init__()
+        self.logging = Config.get_config().advance.verbose
         self.content = ["home", "search", "history", "terminal", "user", "setting"]
-        self.content.insert(len(self.content) - 1, "log")
+        if self.logging:
+            self.content.insert(len(self.content) - 1, "log")
 
     def watch_index(self, value: int) -> None:
         self.query_one(TabbedContent).active = self.content[value]
@@ -54,7 +56,10 @@ class Main(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(TabbedContent).add_pane(TabPane("Log", ListenLog.rich_log, id="log"), before="setting")
+        if self.logging:
+            self.query_one(TabbedContent).add_pane(TabPane("Log", RichLogExtended(), id="log"), before="setting")
+        # for widget in [self, *self.query("*")]:
+        #     widget.tooltip = "\n".join(f"{node!r}" for node in widget.ancestors_with_self)
 
     def on_tabbed_content_tab_activated(self, tab: TabbedContent.TabActivated) -> None:
         tab_id = tab.pane.id
@@ -75,4 +80,4 @@ class Main(Screen[None]):
         title = event.data.song.format_title(romaji_first=romaji_first)
         artist = event.data.song.format_artists(romaji_first=romaji_first)
         self.notify(f"{title}" + f" by [{Theme.ACCENT}]{artist}[/]" if artist else "", title="Now Playing")
-        self.app.query_one(HistoryPage).action_refresh()
+        self.query_one(HistoryPage).update_one()

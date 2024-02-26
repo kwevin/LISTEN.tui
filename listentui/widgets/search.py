@@ -1,4 +1,5 @@
 import webbrowser
+from random import choice as random_choice
 from typing import Any, ClassVar
 
 from rich.text import Text
@@ -7,52 +8,35 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal
 from textual.coordinate import Coordinate
-from textual.message import Message
-from textual.reactive import reactive, var
+from textual.reactive import var
 from textual.validation import Function
-from textual.widgets import Button, Input
+from textual.widgets import Input, Select
 
 from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
 from ..listen.types import Song, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
+from ..screen.song import SongScreen
 from .base import BasePage
-from .datatable import VimDataTable as DataTable
+from .custom import ExtendedDataTable as DataTable
+from .custom import StaticButton, ToggleButton
+from .mpvplayer import MPVStreamPlayer
 
 
-class FavoriteToggleButton(Button):
-    DEFAULT_CSS = f"""
-    FavoriteToggleButton {{
-        background: {Theme.BUTTON_BACKGROUND};
-    }}
-    FavoriteToggleButton.-toggled {{
-        background: {Theme.ACCENT};
-        text-style: bold reverse;
-    }}
-    """
-    is_active: reactive[bool] = reactive(False, init=False, layout=True)
-
-    class Toggled(Message):
-        def __init__(self, state: bool) -> None:
-            super().__init__()
-            self.state = state
-
+class FavoriteButton(ToggleButton):
     def __init__(self):
-        super().__init__("Toggle Favorite Only")
-        self.can_focus = False
+        super().__init__("Toggle Favorite Only", check_user=True)
 
-    async def on_mount(self) -> None:
-        client = ListenClient.get_instance()
-        if not client.logged_in:
-            self.disabled = True
 
-    def watch_is_active(self, new: bool) -> None:
-        self.add_class("-toggled") if new else self.remove_class("-toggled")
+class RandomSongButton(StaticButton):
+    def __init__(self):
+        super().__init__("Request A Random Song", check_user=True, id="random_song")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.is_active = not self.is_active
-        self.post_message(self.Toggled(self.is_active))
+
+class RandomFavoriteButton(StaticButton):
+    def __init__(self):
+        super().__init__("Request A Random Favorited Song", check_user=True, id="random_favorite")
 
 
 class SearchPage(BasePage):
@@ -63,13 +47,17 @@ class SearchPage(BasePage):
     }
     SearchPage Horizontal {
         height: auto;
+        width: 100%;
     }
     SearchPage Button {
-        margin: 1 1;
+        margin-left: 1;
     }
     SearchPage DataTable {
         width: 1fr;
         height: 1fr;
+    }
+    SearchPage Select {
+        width: 12;
     }
     SearchPage DataTable > .datatable--cursor {
         text-style: bold underline;
@@ -77,36 +65,46 @@ class SearchPage(BasePage):
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+l", "focus_input", "Focus Input"),
-        Binding("ctrl+f", "toggle_favorite", "Toggle Favorite Only"),
+        Binding("ctrl+t", "toggle_favorite", "Toggle Favorite Only"),
+        Binding("ctrl+n", "request_random", "Request Random Song"),
     ]
-    search_result: var[list[Song]] = var([], init=False)
+    search_result: var[dict[SongID, Song]] = var({}, init=False)
+    favorited: var[dict[SongID, bool]] = var({}, init=False)
     favorites_only: var[bool] = var(False, init=False)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self._defaults: dict[SongID, Song] = {}
         self.client = ListenClient.get_instance()
-        self.min_search_length = 2
+        self.min_search_length = 3
+        self.search_amount: int | None = 50
         self.artist_max_width = 55
         self.title_max_width = 50
+        self.selection: Select[int] = Select(
+            [("50", 50), ("100", 100), ("200", 200), ("inf", -1)], allow_blank=False, value=50
+        )
 
     def compose(self) -> ComposeResult:
-        yield Input(
-            placeholder="Type 2+ Characters To Search...",
-            validators=Function(lambda x: len(x) >= self.min_search_length),
-        )
         with Horizontal():
-            yield FavoriteToggleButton()
-            # yield Button("This", id="this") # TODO: requests
+            yield Input(
+                placeholder="Type Any Characters To Search...",
+                validators=Function(lambda x: len(x) >= self.min_search_length),
+            )
+            yield self.selection
+        with Horizontal():
+            yield FavoriteButton()
+            yield RandomSongButton()
+            yield RandomFavoriteButton()
         yield DataTable()
 
     def on_focus(self) -> None:
         self.query_one(Input).focus()
 
-    def search_song(self, song_id: SongID) -> Song | None:
-        for song in self.search_result:
-            if song.id == song_id:
-                return song
-        return None
+    def search_song(self, song_id: SongID | int) -> Song:
+        return self.search_result[SongID(song_id)]
+
+    def to_dict(self, songs: list[Song]) -> dict[SongID, Song]:
+        return {song.id: song for song in songs}
 
     @work(group="table")
     async def on_mount(self) -> None:
@@ -116,9 +114,8 @@ class SearchPage(BasePage):
         data_table.add_column("Artists", width=self.artist_max_width)
         data_table.add_column("Album")
         data_table.add_column("Source")
-        if not self.client.logged_in:
-            self.query_one("#favorite_toggle", Button).disabled = True
-        self.search_result = await self.client.songs(0, 100)
+        self._defaults = self.to_dict(await self.client.songs(0, 50))
+        self.search_result = self._defaults
 
     @work(exclusive=True, group="search", exit_on_error=False)
     async def watch_favorites_only(self, value: bool) -> None:
@@ -126,58 +123,60 @@ class SearchPage(BasePage):
         if len(search_term) < self.min_search_length:
             return
         self.query_one(DataTable).loading = True
-        self.search_result = await self.client.search(self.query_one(Input).value, 100, favorite_only=value)
+        self.search_result = self.to_dict(
+            await self.client.search(search_term, self.search_amount, favorite_only=value)
+        )
         self.query_one(DataTable).loading = False
 
     @work(group="table")
-    async def watch_search_result(self, result: list[Song]) -> None:
+    async def watch_search_result(self, result: dict[SongID, Song]) -> None:
         romaji_first = Config.get_config().display.romaji_first
         data_table = self.query_one(DataTable)
         data_table.clear()
         if len(result) == 0:
             return
-        favorites: dict[SongID, bool] = {}
         if self.client.logged_in:
-            favorites = await self.client.check_favorite([song.id for song in result])
-        for song in result:
+            self.favorited = await self.client.check_favorite(list(result))
+        for song in result.values():
             row = [
-                Text(str(song.id), style=f"bold {Theme.ACCENT}") if favorites.get(song.id) else Text(str(song.id)),
+                Text(str(song.id), style=f"bold {Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
                 self.ellipsis(song.format_title(romaji_first=romaji_first), self.title_max_width),
                 self.ellipsis(song.format_artists(romaji_first=romaji_first), self.artist_max_width),
                 song.format_album(romaji_first=romaji_first),
                 song.format_source(romaji_first=romaji_first),
             ]
             data_table.add_row(*row, key=f"{song.id}")
-        data_table.refresh(layout=True)
+        # data_table.refresh(layout=True)
 
     @work(group="table")
-    async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:  # noqa: PLR0912
+    async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
         data_table = self.query_one(DataTable)
         column = event.coordinate.column
-        if column == 1:  # TODO: make this request the song instead
-            return
         id_coord = Coordinate(event.coordinate.row, 0)
         _id: Text = data_table.get_cell_at(id_coord)
         song_id = SongID(int(_id.plain))
-        song = self.search_song(song_id) or await self.client.song(song_id)
+        song = self.search_song(song_id)
         romaji_first = Config.get_config().display.romaji_first
-        if not song:
-            return
         match column:
             case 0:
-                if self.client.logged_in:
-                    if await self.app.push_screen(ConfirmScreen(label="Favorite Song?"), wait_for_dismiss=True):
-                        await self.client.favorite_song(song_id)
-                        state: bool = await self.client.check_favorite(song_id)
-                        data_table.update_cell_at(
-                            id_coord, Text(str(song_id), style=f"bold {Theme.ACCENT}") if state else Text(str(song_id))
-                        )
-                        self.notify(
-                            f"{'Favorited' if state else 'Unfavorited'} "
-                            + f"{song.format_title(romaji_first=romaji_first)}"
-                        )
-                else:
-                    self.notify("Must be logged in to favorite song", severity="warning")
+                if not self.client.logged_in:
+                    return
+                state: bool = self.favorited.get(song_id, False)
+                if await self.app.push_screen(
+                    ConfirmScreen(label=f"{'Unfavorite' if state else 'Favorite'} Song?"), wait_for_dismiss=True
+                ):
+                    await self.client.favorite_song(song_id)
+                    data_table.update_cell_at(
+                        id_coord, Text(str(song_id), style=f"bold {Theme.ACCENT}") if state else Text(str(song_id))
+                    )
+                    self.notify(
+                        f"{'Favorited' if state else 'Unfavorited'} "
+                        + f"{song.format_title(romaji_first=romaji_first)}"
+                    )
+            case 1:
+                self.app.push_screen(
+                    SongScreen(song, self.app.query_one(MPVStreamPlayer), self.favorited.get(song_id, False))
+                )
             case 2:
                 if song.artists:
                     if len(song.artists) == 1:
@@ -191,29 +190,34 @@ class SearchPage(BasePage):
                         if result is not None:
                             webbrowser.open_new_tab(song.artists[result].link)
             case 3:
+                # pylance keep saying no overload for await push_screen
                 if song.album and await self.app.push_screen(
-                    ConfirmScreen(label="Open Album Page?"), wait_for_dismiss=True
+                    ConfirmScreen(label="Open Album Page?"),
+                    wait_for_dismiss=True,  # type: ignore
                 ):
                     webbrowser.open_new_tab(song.album.link)
             case 4:
                 if song.source and await self.app.push_screen(
-                    ConfirmScreen(label="Open Source Page?"), wait_for_dismiss=True
+                    ConfirmScreen(label="Open Source Page?"),
+                    wait_for_dismiss=True,  # type: ignore
                 ):
                     webbrowser.open_new_tab(song.source.link)
             case _:
                 pass
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_input_submitted(self) -> None:
         self.query_one(DataTable).focus()
 
     @work(exclusive=True, group="search", exit_on_error=False)
     async def on_input_changed(self, event: Input.Changed) -> None:
         if event.validation_result and event.validation_result.is_valid:
             self.query_one(DataTable).loading = True
-            self.search_result = await self.client.search(event.value, 100, favorite_only=self.favorites_only)
+            self.search_result = self.to_dict(
+                await self.client.search(event.value, self.search_amount, favorite_only=self.favorites_only)
+            )
             self.query_one(DataTable).loading = False
         else:
-            return
+            self.search_result = self._defaults
 
     def action_focus_input(self) -> None:
         self.query_one(Input).focus()
@@ -221,13 +225,38 @@ class SearchPage(BasePage):
     def action_toggle_favorite(self) -> None:
         if self.client.logged_in:
             self.favorites_only = not self.favorites_only
-            self.query_one(FavoriteToggleButton).is_active = self.favorites_only
+            self.query_one(FavoriteButton).set_state(self.favorites_only)
         else:
             self.notify("Must be logged in to toggle favorite only", severity="warning")
 
-    @on(FavoriteToggleButton.Toggled)
-    def on_favorite_toggle_pressed(self, event: FavoriteToggleButton.Toggled) -> None:
+    @on(FavoriteButton.Toggled)
+    def toggle_favorite(self, event: FavoriteButton.Toggled) -> None:
         self.favorites_only = event.state
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.value == -1:
+            self.search_amount = None
+        else:
+            self.search_amount = int(event.value) if isinstance(event.value, int) else 20
+
+    @on(RandomSongButton.Pressed, "RandomSongButton")
+    async def request_random(self) -> None:
+        random = random_choice(list(self.search_result))
+        await self.client.request_song(random)
+
+    @on(RandomFavoriteButton.Pressed, "RandomFavoriteButton")
+    async def request_random_favorite(self) -> None:
+        res: Song | None = await self.client.request_random_favorite(exception_on_error=False)
+        romaji_first = Config.get_config().display.romaji_first
+        if not res:
+            self.notify("All requests have been used up for today!", severity="warning")
+        else:
+            title = res.format_title(romaji_first=romaji_first)
+            artist = res.format_artists(romaji_first=romaji_first)
+            self.notify(
+                f"{title}" + f" by [{Theme.ACCENT}]{artist}[/]" if artist else "",
+                title="Sent to queue",
+            )
 
     def ellipsis(self, text: str | None, max_length: int) -> str:
         if not text:

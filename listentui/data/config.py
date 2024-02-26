@@ -59,6 +59,12 @@ class Presence:
 class Display:
     romaji_first: bool = True
     """Prefer romaji first"""
+    show_romaji_tooltip: bool = True
+    """Show romaji as a tooltip on player hover"""
+    user_feed_amount: int = 10
+    """Amount of user feed to show"""
+    history_amount: int = 100
+    """Amount of history to show"""
 
 
 @dataclass
@@ -85,6 +91,12 @@ class Player:
 
 
 @dataclass
+class Advance:
+    verbose: bool = False
+    """Enable verbose logging and more"""
+
+
+@dataclass
 class Persistant:
     volume: int = 100
     token: str = ""
@@ -93,9 +105,10 @@ class Persistant:
 @dataclass
 class DefaultConfig:
     client: Client = field(default_factory=Client)
-    presence: Presence = field(default_factory=Presence)
     display: Display = field(default_factory=Display)
+    presence: Presence = field(default_factory=Presence)
     player: Player = field(default_factory=Player)
+    advance: Advance = field(default_factory=Advance)
     persistant: Persistant = field(default_factory=Persistant)
 
 
@@ -110,6 +123,7 @@ class Config:
         self._rich_presence: Presence
         self._display: Display
         self._player: Player
+        self._advance: Advance
         self._load_config()
         Config.config = self
 
@@ -132,6 +146,10 @@ class Config:
     @property
     def player(self):
         return self._player
+
+    @property
+    def advance(self):
+        return self._advance
 
     @property
     def persistant(self):
@@ -167,9 +185,8 @@ class Config:
         self._rich_presence = Presence(**self._conf["presence"])
         self._display = Display(**self._conf["display"])
         self._player = Player(**self._conf["player"])
+        self._advance = Advance(**self._conf["advance"])
         self._persistant = Persistant(**self._conf["persistant"])
-
-        # getLogger(__name__).debug(f"Loaded config: {pretty_repr(self.__dict__)}")
 
     def _write_config(self, config: dict[str, Any]) -> None:
         with open(self.config_file, "wb") as f:
@@ -180,7 +197,11 @@ class Config:
 
     def save(self):
         self._write_config(
-            asdict(DefaultConfig(self._client, self._rich_presence, self._display, self._player, self._persistant))
+            asdict(
+                DefaultConfig(
+                    self._client, self._display, self._rich_presence, self._player, self._advance, self._persistant
+                )
+            )
         )
         self._load_config()
 

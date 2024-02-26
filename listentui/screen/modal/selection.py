@@ -1,9 +1,9 @@
 from typing import Any, ClassVar
 
-from textual import events
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import BindingType
-from textual.containers import Container, Grid
+from textual.containers import Center, Container, Grid
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label
@@ -51,16 +51,20 @@ class SelectionScreen(ModalScreen[int | None]):
         height: auto;
 
     }
-    SelectionScreen Button {
+    SelectionScreen OptionButton {
         width: 100%;
+    }
+    SelectionScreen Center {
+        width: 100%;
+        height: auto;
     }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape,n,N", "cancel"),
-        ("left", "focus_previous"),
-        ("right", "focus_next"),
-        ("up", "focus_up"),
-        ("down", "focus_down"),
+        ("left,h", "focus_previous"),
+        ("right,l", "focus_next"),
+        ("up,k", "focus_up"),
+        ("down,j", "focus_down"),
     ]
 
     def __init__(self, options: list[str]):
@@ -73,7 +77,10 @@ class SelectionScreen(ModalScreen[int | None]):
             with Grid():
                 for idx, option in enumerate(self.options):
                     yield OptionButton(self.clamp(f"[{idx + 1}] {option}"), index=idx)
+            with Center():
+                yield Button("[N] Cancel", variant="primary", id="cancel")
 
+    @on(Button.Pressed, "#cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)
 

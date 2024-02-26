@@ -63,7 +63,7 @@ class CurrentUser(User):
 
 @dataclass
 class Album:
-    id: AlbumID  # noqa: A003
+    id: AlbumID
     name: str | None
     name_romaji: str | None
     image: Image | None
@@ -75,7 +75,7 @@ class Album:
 
 @dataclass
 class Artist:
-    id: ArtistID  # noqa: A003
+    id: ArtistID
     name: str | None
     name_romaji: str | None
     image: Image | None
@@ -88,7 +88,7 @@ class Artist:
 
 @dataclass
 class Character:
-    id: CharacterID  # noqa: A003
+    id: CharacterID
     name: Optional[str] = None
     name_romaji: Optional[str] = None
     link: str = field(init=False)
@@ -99,7 +99,7 @@ class Character:
 
 @dataclass
 class Source:
-    id: SourceID  # noqa: A003
+    id: SourceID
     name: str | None
     name_romaji: str | None
     image: Image | None
@@ -128,7 +128,7 @@ class Requester:
 
 @dataclass
 class Event:
-    id: str  # noqa: A003
+    id: str
     name: str
     slug: str
     image: str
@@ -161,12 +161,16 @@ class Song:
             kwargs.update({"played": p})
         if p := data.get("titleRomaji"):
             kwargs.update({"title_romaji": p})
+        if p := data.get("lastPlayed"):
+            kwargs.update({"last_played": datetime.fromtimestamp(int(p) / 1000)})
 
         return cls(**kwargs)  # pyright: ignore
 
     @staticmethod
     def _sanitise(word: str) -> str:
-        return word.replace("\u3099", "\u309B").replace("\u309A", "\u309C").replace("\u200b", "")
+        # TODO: need to see if this affects Textual
+        return word
+        # return word.replace("\u3099", "\u309B").replace("\u309A", "\u309C").replace("\u200b", "")
 
     @staticmethod
     def _get_title(song: dict[str, Any]) -> str:
@@ -343,7 +347,7 @@ class Song:
             return None
         return self.source.image.url
 
-    id: SongID  # noqa: A003
+    id: SongID
     title: str | None
     source: Source | None
     artists: list[Artist] | None
@@ -354,11 +358,12 @@ class Song:
     snippet: Optional[str] = None
     played: Optional[int] = None
     title_romaji: Optional[str] = None
+    last_played: Optional[datetime] = None
 
 
 @dataclass
 class SystemFeed:
-    type: int  # noqa: A003
+    type: int
     created_at: datetime
     song: Song | None
     activity: str = field(init=False)

@@ -47,6 +47,8 @@ class Queries:
     source: DocumentNode
     play_statistic: DocumentNode
     search: DocumentNode
+    request_song: DocumentNode
+    request_random_song: DocumentNode
 
 
 class NotAuthenticatedError(Exception):
@@ -149,6 +151,7 @@ class ListenClient:
                         played
                         titleRomaji
                         snippet
+                        lastPlayed
                     """,
             "generic": """
                         id
@@ -296,6 +299,24 @@ class ListenClient:
             }
         """
         ).safe_substitute(base)
+        request = Template(
+            """
+            mutation requestSong($id: Int!) {
+                requestSong(id: $id) {
+                    ${song}
+                }
+            }
+        """
+        ).safe_substitute(base)
+        request_random = Template(
+            """
+            mutation requestRandomFavorite {
+                requestRandomFavorite {
+                    ${song}
+                }
+            }
+        """
+        ).safe_substitute(base)
 
         return Queries(
             login=gql(login),
@@ -310,6 +331,8 @@ class ListenClient:
             source=gql(source),
             play_statistic=gql(play_statistic),
             search=gql(search),
+            request_song=gql(request),
+            request_random_song=gql(request_random),
         )
 
     @classmethod
@@ -381,12 +404,12 @@ class ListenClient:
             self._session = await self._client.connect_async(reconnecting=True)  # pyright: ignore
         return await self._session.execute(document=document, variable_values=variable_values)  # pyright: ignore
 
-    async def update_current_user(self) -> CurrentUser | None:
+    async def update_current_user(self, offset: int = 0, count: int = 5) -> CurrentUser | None:
         """update the current user with the latest data from the api"""
         if not self._user:
             return None
         current_user = self._user
-        user = await self.user(current_user.username)
+        user = await self.user(current_user.username, offset, count)
         if not user:
             return None
         self._user = CurrentUser(
@@ -515,17 +538,15 @@ class ListenClient:
         ]
 
     async def search(self, term: str, count: Optional[int] = None, favorite_only: Optional[bool] = False) -> list[Song]:
-        """search for a song from the api, length of term must be greater than 2 character"""
-        min_length = 2
-        if len(term) < min_length:
-            return []
+        """search for a song from the api"""
         if not self.logged_in and favorite_only:
             raise NotAuthenticatedError("Not logged in")
         query = self._queries.search
         params = {"term": term, "favoritesOnly": favorite_only}
         res = await self._execute(document=query, variable_values=params)
         songs = res["search"]
-        return [Song.from_data(song) for song in songs[:count]] if count else [Song.from_data(song) for song in songs]
+        songs = songs[:count] if count else songs
+        return [Song.from_data(song) for song in songs]
 
     @overload
     async def check_favorite(self, song_ids: list[Union[SongID, int]]) -> dict[SongID, bool]:
@@ -561,3 +582,43 @@ class ListenClient:
         query = self._queries.favorite_song
         params = {"id": song_id}
         await self._execute(document=query, variable_values=params)
+
+    @requires_auth
+    async def request_song(self, song_id: Union[SongID, int], exception_on_error: bool = True) -> Song | None:
+        """REQUIRED: logged in user\n
+        request a song\n
+        raises NotAuthenticatedError if not logged in,
+        return `None` if the request failed and `exception_on_error` is set to `False`
+        """
+        query = self._queries.request_song
+        params = {"id": song_id}
+        if not exception_on_error:
+            try:
+                res = await self._execute(document=query, variable_values=params)
+            except TransportQueryError:
+                return None
+        else:
+            res = await self._execute(document=query, variable_values=params)
+
+        return Song.from_data(res["requestSong"])
+
+    @requires_auth
+    async def request_random_favorite(
+        self,
+        exception_on_error: bool = True,
+    ) -> Song | None:
+        """REQUIRED: logged in user\n
+        request a random user favorited song\n
+        raises NotAuthenticatedError if not logged in,
+        return `None` if the request failed and `exception_on_error` is set to `False`
+        """
+        query = self._queries.request_random_song
+        if not exception_on_error:
+            try:
+                res = await self._execute(document=query)
+            except TransportQueryError:
+                return None
+        else:
+            res = await self._execute(document=query)
+
+        return Song.from_data(res["requestRandomFavorite"])

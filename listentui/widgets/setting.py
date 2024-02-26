@@ -8,6 +8,7 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal
+from textual.message import Message
 from textual.reactive import var
 from textual.validation import Function, Validator
 from textual.widget import Widget
@@ -17,7 +18,6 @@ from textual.widgets._button import ButtonVariant
 from ..data.config import Config
 from ..listen.client import ListenClient
 from .base import BasePage
-from .mpvplayer import MPVStreamPlayer
 
 DOC: dict[str, str] = {
     "client.username": "Your login username",
@@ -34,10 +34,14 @@ DOC: dict[str, str] = {
     "presence.show_time_left": "Whether to show time remaining",
     "presence.show_small_image": "Whether to show small image (artist image)",
     "display.romaji_first": "Prefer romaji first",
+    "display.show_romaji_tooltip": "Show romaji as a tooltip on player hover",
+    "display.user_feed_amount": "Amount of user feed to display",
+    "display.history_amount": "Amount of history to display",
     "player.timeout_restart": "How long to wait before restarting the player (in seconds)",
     "player.volume_step": "How much to raise/lower volume by",
     "player.dynamic_range_compression": "Enable dynamic range compression, this will add an `af` field into `mpv_options`, will be overwritten if `mpv_options` already has an `af` field set",  # noqa: E501
     "player.mpv_options": "MPV options to pass to mpv (see https://mpv.io/manual/master/#options)",
+    "advance.verbose": "Enable verbose logging and add an additional `log` tab for debugging",
 }
 
 
@@ -134,6 +138,7 @@ class GenericField(Generic):
         self.value = setting.value
         self.hide_input = hide_input
         self.validator = validator
+        self.is_int = is_int
         self.input_type: Literal["text", "number"] = "number" if is_int else "text"
 
     def compose(self) -> ComposeResult:
@@ -147,9 +152,9 @@ class GenericField(Generic):
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.validation_result and not event.validation_result.is_valid:
             return
-        self.setting.value = event.value
+        self.setting.value = int(event.value) if self.is_int else event.value
         config = Config.get_config()
-        setattr(getattr(config, self.setting.catagory), self.setting.option, event.value)
+        setattr(getattr(config, self.setting.catagory), self.setting.option, self.setting.value)
         config.save()
 
 
@@ -269,7 +274,7 @@ class MPVOptions(Generic):
                 severity="warning",
                 timeout=5,
             )
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             # ValueError("Exception Message", -5, (<mpvHandleObject at>, b'illegal value', b'no'))
             exception_message: str = e.args[0]
             flag = bytes(e.args[-1][1]).decode()
@@ -281,6 +286,8 @@ class MPVOptions(Generic):
                 severity="warning",
                 timeout=5,
             )
+        except Exception as e:
+            self.notify(f"{e}", title="Exception", severity="warning", timeout=5)
         return False
 
     @on(Button.Pressed, "#check")
@@ -344,6 +351,10 @@ class SettingPage(BasePage):
 
     BINDINGS: ClassVar[list[BindingType]] = [Binding("ctrl+s", "apply", "Apply Changes")]
 
+    class Restart(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
     def __init__(self) -> None:
         super().__init__()
         self.config = Config.get_config().config_raw
@@ -379,13 +390,9 @@ class SettingPage(BasePage):
     def get_override(self, catagory: str, option: str) -> Widget | None:
         return self.override.get(f"{catagory}.{option}")
 
-    @work(exclusive=True, group="apply")
-    async def action_apply(self) -> None:
-        for widget in ["HistoryPage", "ListenWebsocket", "PlayerPage", "SearchPage", "UserPage"]:
-            self.app.query_one(widget).on_mount()  # type: ignore
-
-        self.app.query_one(MPVStreamPlayer).hard_restart()
-        self.notify("Applied Changes")
+    def action_apply(self) -> None:
+        self.notify("Applying changes...")
+        # TODO: unmount and mount screen without everything dying
 
 
 if __name__ == "__main__":

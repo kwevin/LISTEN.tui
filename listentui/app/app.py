@@ -1,17 +1,18 @@
-from textual import work
+from textual import on, work
 from textual.app import App
 
 from ..data import Config
 from ..listen import ListenClient
 from ..screen import Main
-from ..utilities import ListenLog
+from ..utilities import create_logger
+from ..widgets import SettingPage
 
 
 class ListentuiApp(App[None]):
     TITLE = "LISTEN.moe"
 
     async def on_mount(self) -> None:
-        ListenLog.create_logger(True)
+        create_logger(Config.get_config().advance.verbose)
         await self.login().wait()
         self.push_screen(Main())
 
@@ -34,6 +35,12 @@ class ListentuiApp(App[None]):
             config = Config.get_config()
             config.persistant.token = user.token
             config.save()
+
+    @on(SettingPage.Restart)
+    async def restart(self) -> None:
+        self.pop_screen()
+        await self.login().wait()
+        self.push_screen(Main())
 
 
 def run() -> None:
