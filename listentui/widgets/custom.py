@@ -238,6 +238,7 @@ class DurationProgressBar(Widget):
     def reset(self) -> None:
         self.current = 0
         self.query_one(ProgressBar).update(total=self.total if self.total != 0 else None, progress=self.current)
+        self.query_one(_DurationCompleteLabel).total = self.total
 
 
 class ExtendedDataTable(DataTable[Any]):
@@ -323,5 +324,12 @@ class ToggleButton(StaticButton):
         self.is_toggled = not self.is_toggled
         self.post_message(self.Toggled(self.is_toggled))
 
-    def set_state(self, state: bool) -> None:
+    def set_toggle_state(self, state: bool) -> None:
         self.is_toggled = state
+        self.post_message(self.Toggled(self.is_toggled))
+
+    def update_toggle_label(self, label: str | Text | None) -> None:
+        self._toggled_label = label
+
+    def update_default_label(self, label: str | Text | None) -> None:
+        self._default = label

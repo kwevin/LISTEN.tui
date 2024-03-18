@@ -2,10 +2,11 @@ from datetime import datetime
 from typing import Any, ClassVar
 
 from rich.text import Text
-from textual import work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Center, Grid, Horizontal, Middle
+from textual.message import Message
 from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Label, ListItem, ListView, Markdown
@@ -13,9 +14,60 @@ from textual.widgets import Label, ListItem, ListView, Markdown
 from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
-from ..listen.types import CurrentUser, SystemFeed
+from ..listen.types import CurrentUser, Song, SystemFeed
+from ..screen.popup import SongScreen
 from ..utilities import format_time_since
 from .base import BasePage
+from .mpvplayer import MPVStreamPlayer
+
+
+class FeedItem(ListItem):
+    def __init__(self, song: Song, feed: SystemFeed):
+        self.song = song
+        self.feed = feed
+        romaji_first = Config.get_config().display.romaji_first
+        title = song.format_title(romaji_first=romaji_first)
+        artist = song.format_artists(show_character=False, romaji_first=romaji_first, embed_link=True)
+        super().__init__(
+            Label(
+                Text.from_markup(f"[{Theme.ACCENT}]•[/] {format_time_since(feed.created_at)}"),
+                classes="feed-time",
+            ),
+            Label(
+                Text.from_markup(f"{feed.activity} {title} by [{Theme.ACCENT}]{artist}[/]"),
+                classes="feed-text",
+                shrink=True,
+            ),
+        )
+
+    class FeedChildClicked(Message):
+        """For informing with the parent ListView that we were clicked"""
+
+        def __init__(self, item: "FeedItem") -> None:
+            self.item = item
+            super().__init__()
+
+    async def _on_click(self, _: events.Click) -> None:
+        self.post_message(self.FeedChildClicked(self))
+
+
+class FeedView(ListView):
+    class FeedSelected(Message):
+        def __init__(self, song: Song, feed: SystemFeed) -> None:
+            self.song = song
+            self.feed = feed
+            super().__init__()
+
+    @on(FeedItem.FeedChildClicked)
+    def feed_clicked(self, event: FeedItem.FeedChildClicked) -> None:
+        self.post_message(self.FeedSelected(event.item.song, event.item.feed))
+
+    def action_select_cursor(self) -> None:
+        """Select the current item in the list."""
+        selected_child: FeedItem | None = self.highlighted_child  # type: ignore
+        if selected_child is None:
+            return
+        self.post_message(self.FeedSelected(selected_child.song, selected_child.feed))
 
 
 class NamedStatField(Widget):
@@ -120,36 +172,35 @@ class UserFeed(Widget):
 
     def compose(self) -> ComposeResult:
         yield Label(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}", id="time")
-        yield ListView()
+        yield FeedView()
 
     def watch_feeds(self, feeds: list[SystemFeed]) -> None:
-        romaji_first = Config.get_config().display.romaji_first
-        listview = self.query_one(ListView)
+        listview = self.query_one(FeedView)
         listview.clear()
-        listitems: list[ListItem] = []
+        listitems: list[FeedItem] = []
         for feed in feeds:
             if not feed.song:
                 continue
-            title = feed.song.format_title(romaji_first=romaji_first)
-            artist = feed.song.format_artists(show_character=False, romaji_first=romaji_first, embed_link=True)
-            listitems.append(
-                ListItem(
-                    Label(
-                        Text.from_markup(f"[{Theme.ACCENT}]•[/] {format_time_since(feed.created_at)}"),
-                        classes="feed-time",
-                    ),
-                    Label(
-                        Text.from_markup(f"{feed.activity} {title} by [{Theme.ACCENT}]{artist}[/]"),
-                        classes="feed-text",
-                        shrink=True,
-                    ),
-                )
-            )
+            listitems.append(FeedItem(feed.song, feed))
         listview.extend(listitems)
 
     def update(self, user_feeds: list[SystemFeed]) -> None:
         self.feeds = user_feeds
         self.query_one("#time", Label).update(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
+
+    @on(FeedView.FeedSelected)
+    async def feed_selected(self, event: FeedView.FeedSelected) -> None:
+        song = event.song
+        feed = event.feed
+        self.app.push_screen(
+            SongScreen(
+                song,
+                self.app.query_one(MPVStreamPlayer),
+                True
+                if feed.type == SystemFeed.ActivityType.FAVORITED
+                else await ListenClient.get_instance().check_favorite(song.id),
+            )
+        )
 
 
 class UserPage(BasePage):

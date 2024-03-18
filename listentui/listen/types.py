@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from time import time
 from typing import Any, Literal, NewType, Optional, Self, Type, Union
 
@@ -10,6 +13,12 @@ ArtistID = NewType("ArtistID", int)
 CharacterID = NewType("CharacterID", int)
 SongID = NewType("SongID", int)
 SourceID = NewType("SourceID", int)
+
+
+@dataclass
+class Socials:
+    name: str
+    url: str
 
 
 @dataclass
@@ -45,7 +54,7 @@ class User:
     favorites: int
     uploads: int
     requests: int
-    feeds: list["SystemFeed"]
+    feeds: list[SystemFeed]
     link: str = field(init=False)
 
     def __post_init__(self):
@@ -67,10 +76,15 @@ class Album:
     name: str | None
     name_romaji: str | None
     image: Image | None
+    songs: list[Song] | None = None
     link: str = field(init=False)
 
     def __post_init__(self):
         self.link = f"https://listen.moe/albums/{self.id}"
+
+    def format_name(self, *, romaji_first: bool = True) -> str | None:
+        name = self.name_romaji or self.name if romaji_first else self.name
+        return name if name else None
 
 
 @dataclass
@@ -79,11 +93,20 @@ class Artist:
     name: str | None
     name_romaji: str | None
     image: Image | None
-    character: list["Character"] | None
+    characters: list[Character] | None
+    socials: list[Socials] | None = None
+    song_count: int | None = None
+    albums: list[Album] | None = None
+    songs_without_album: list[Song] | None = None
+    album_count: int | None = None
     link: str = field(init=False)
 
     def __post_init__(self):
         self.link = f"https://listen.moe/artists/{self.id}"
+
+    def format_name(self, *, romaji_first: bool = True) -> str | None:
+        name = self.name_romaji or self.name if romaji_first else self.name
+        return name if name else None
 
 
 @dataclass
@@ -127,6 +150,11 @@ class Requester:
 
 
 @dataclass
+class Uploader(Requester):
+    pass
+
+
+@dataclass
 class Event:
     id: str
     name: str
@@ -163,6 +191,8 @@ class Song:
             kwargs.update({"title_romaji": p})
         if p := data.get("lastPlayed"):
             kwargs.update({"last_played": datetime.fromtimestamp(int(p) / 1000)})
+        if p := data.get("uploader"):
+            kwargs.update({"uploader": Uploader.from_data(p)})
 
         return cls(**kwargs)  # pyright: ignore
 
@@ -201,7 +231,7 @@ class Song:
                 name=Song._sanitise(artist["name"]) if artist.get("name") else None,
                 name_romaji=Song._sanitise(artist["nameRomaji"]) if artist.get("nameRomaji") else None,
                 image=Image.from_source("artists", artist.get("image")),
-                character=[
+                characters=[
                     Character(
                         character["id"],
                         name=Song._sanitise(character["name"]) if character.get("name") else None,
@@ -259,12 +289,12 @@ class Song:
                 break
             name = (artist.name_romaji if artist.name_romaji else artist.name) if romaji_first else artist.name
 
-            if show_character and self.characters and artist.character:
+            if show_character and self.characters and artist.characters:
                 character_map: dict[int, Character] = {character.id: character for character in self.characters}
                 char = next(
                     (
                         character_map.get(character.id)
-                        for character in artist.character
+                        for character in artist.characters
                         if character_map.get(character.id)
                     ),
                     None,
@@ -311,7 +341,15 @@ class Song:
         return None
 
     def _format(self, albs: Union[Album, Source], romaji_first: bool = True, embed_link: bool = False) -> str | None:
-        name = (albs.name_romaji if albs.name_romaji else albs.name) if romaji_first else albs.name
+        name = (
+            (albs.name_romaji if albs.name_romaji else albs.name)
+            if romaji_first
+            else albs.name
+            if albs.name
+            else albs.name_romaji
+        )
+        if not name:
+            return None
         if embed_link:
             return f"[link={albs.link}]{name}[/link]"
         return name
@@ -355,6 +393,7 @@ class Song:
     album: Album | None
     duration: int | None
     time_end: int
+    uploader: Uploader | None = None
     snippet: Optional[str] = None
     played: Optional[int] = None
     title_romaji: Optional[str] = None
@@ -363,28 +402,30 @@ class Song:
 
 @dataclass
 class SystemFeed:
-    type: int
+    type: ActivityType
     created_at: datetime
     song: Song | None
     activity: str = field(init=False)
+
+    class ActivityType(Enum):
+        FAVORITED = 2
+        UPLOADED = 4
 
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         song = data["song"]
         return cls(
-            type=data["type"],
+            type=cls.ActivityType.FAVORITED if int(data["type"]) == 2 else cls.ActivityType.UPLOADED,  # noqa: PLR2004
             created_at=datetime.fromtimestamp(round(int(data["createdAt"]) / 1000)),
             song=Song.from_data(song) if song else None,
         )
 
     def __post_init__(self) -> None:
         match self.type:
-            case 2:
+            case self.ActivityType.FAVORITED:
                 self.activity = "Favorited"
-            case 4:
+            case self.ActivityType.UPLOADED:
                 self.activity = "Uploaded"
-            case _:
-                self.activity = ""
 
 
 @dataclass

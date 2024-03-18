@@ -23,7 +23,7 @@ class Main(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         self.logging = Config.get_config().advance.verbose
-        self.content = ["home", "search", "history", "terminal", "user", "setting"]
+        self.content = ["home", "search", "history", "download", "user", "setting"]
         if self.logging:
             self.content.insert(len(self.content) - 1, "log")
 
@@ -47,7 +47,7 @@ class Main(Screen[None]):
                 yield SearchPage()
             with TabPane("History", id="history"):
                 yield HistoryPage()
-            with TabPane("Terminal", id="terminal"):
+            with TabPane("Download", id="download"):
                 yield Placeholder()
             with TabPane("User", id="user"):
                 yield UserPage()

@@ -38,6 +38,7 @@ class MPVStreamPlayer(Widget):
         self._log = get_logger()
         self.stream_url = "https://listen.moe/stream"
         self.player = mpv.MPV(**self.get_options())
+        self.pv_player: mpv.MPV | None = None
         self._idle_count = 0
 
     @property
@@ -91,8 +92,6 @@ class MPVStreamPlayer(Widget):
             self.player.pause = True
 
     def watch_volume(self, new: int) -> None:
-        config = Config.get_config()
-        config.persistant.volume = new
         self.player.volume = new
 
     @work(exclusive=True, group="player_reset", thread=True)
@@ -165,6 +164,7 @@ class MPVStreamPlayer(Widget):
         song_url: str,
         on_play: Callable[[Worker[Any]], Any],
         on_error: Callable[[Worker[Any]], Any],
+        on_finish: Callable[[Worker[Any]], Any] | None = None,
     ) -> None:
         """
         Args:
@@ -173,22 +173,29 @@ class MPVStreamPlayer(Widget):
             on_error (Worker[Any]): The callback to run when the song fails to play
         """
         final_url = f"https://cdn.listen.moe/snippets/{song_url}".strip()
-        player = mpv.MPV(log_handler=self.log_handler, **self.get_options())
+        self.pv_player = mpv.MPV(log_handler=self.log_handler, **self.get_options())
 
-        @player.event_callback("end-file")
+        @self.pv_player.event_callback("end-file")
         def check(event: mpv.MpvEvent):  # type: ignore
             if isinstance(event.data, mpv.MpvEventEndFile) and event.data.reason == mpv.MpvEventEndFile.ERROR:
-                self.app.call_from_thread(on_error)  # TODO: maybe this is wrong?
-                player.terminate()
+                self.app.call_from_thread(on_error)
+                self.pv_player.terminate()  # type: ignore
 
         try:
-            player.play(final_url)
-            player.wait_until_playing()
+            self.pv_player.play(final_url)
+            self.pv_player.wait_until_playing()
             self.is_playing = False
             self.app.call_from_thread(on_play)
-            player.wait_for_playback()
-            player.terminate()
+            self.pv_player.wait_for_playback()
         except mpv.ShutdownError:
-            pass
+            self.app.call_from_thread(on_error)
         finally:
-            self.is_playing = True
+            self.pv_player.terminate()
+            if on_finish:
+                self.app.call_from_thread(on_finish)
+        self.is_playing = True
+
+    def terminate_preview(self) -> None:
+        if not self.pv_player:
+            return
+        self.pv_player.terminate()

@@ -14,10 +14,10 @@ from textual.widgets import Input, Select
 
 from ..data.config import Config
 from ..data.theme import Theme
-from ..listen.client import ListenClient
+from ..listen.client import ListenClient, RequestError
 from ..listen.types import Song, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
-from ..screen.song import SongScreen
+from ..screen.popup import SongScreen
 from .base import BasePage
 from .custom import ExtendedDataTable as DataTable
 from .custom import StaticButton, ToggleButton
@@ -75,6 +75,7 @@ class SearchPage(BasePage):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._defaults: dict[SongID, Song] = {}
+        self._search_list: list[SongID] = []
         self.client = ListenClient.get_instance()
         self.min_search_length = 3
         self.search_amount: int | None = 50
@@ -130,6 +131,7 @@ class SearchPage(BasePage):
 
     @work(group="table")
     async def watch_search_result(self, result: dict[SongID, Song]) -> None:
+        self._search_list = list(result)
         romaji_first = Config.get_config().display.romaji_first
         data_table = self.query_one(DataTable)
         data_table.clear()
@@ -139,7 +141,7 @@ class SearchPage(BasePage):
             self.favorited = await self.client.check_favorite(list(result))
         for song in result.values():
             row = [
-                Text(str(song.id), style=f"bold {Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
+                Text(str(song.id), style=f"{Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
                 self.ellipsis(song.format_title(romaji_first=romaji_first), self.title_max_width),
                 self.ellipsis(song.format_artists(romaji_first=romaji_first), self.artist_max_width),
                 song.format_album(romaji_first=romaji_first),
@@ -167,28 +169,36 @@ class SearchPage(BasePage):
                 ):
                     await self.client.favorite_song(song_id)
                     data_table.update_cell_at(
-                        id_coord, Text(str(song_id), style=f"bold {Theme.ACCENT}") if state else Text(str(song_id))
+                        id_coord, Text(str(song_id), style=f"{Theme.ACCENT}") if not state else Text(str(song_id))
                     )
                     self.notify(
-                        f"{'Favorited' if state else 'Unfavorited'} "
+                        f"{'Unfavorited' if state else 'Favorited'} "
                         + f"{song.format_title(romaji_first=romaji_first)}"
                     )
+                    self.favorited[song_id] = not state
             case 1:
-                self.app.push_screen(
-                    SongScreen(song, self.app.query_one(MPVStreamPlayer), self.favorited.get(song_id, False))
+                favorited_state = await self.app.push_screen(
+                    SongScreen(song, self.app.query_one(MPVStreamPlayer), self.favorited.get(song_id, False)),
+                    wait_for_dismiss=True,
+                )
+                self.favorited[song_id] = favorited_state
+                data_table.update_cell_at(
+                    id_coord,
+                    Text(str(song_id), style=f"{Theme.ACCENT}") if favorited_state else Text(str(song_id)),
                 )
             case 2:
-                if song.artists:
-                    if len(song.artists) == 1:
-                        if await self.app.push_screen(ConfirmScreen(label="Open Artist Page?"), wait_for_dismiss=True):
-                            webbrowser.open_new_tab(song.artists[0].link)
-                    else:
-                        options = song.format_artists_list()
-                        if not options:
-                            return
-                        result = await self.app.push_screen(SelectionScreen(options), wait_for_dismiss=True)
-                        if result is not None:
-                            webbrowser.open_new_tab(song.artists[result].link)
+                if not song.artists:
+                    return
+                if len(song.artists) == 1:
+                    if await self.app.push_screen(ConfirmScreen(label="Open Artist Page?"), wait_for_dismiss=True):
+                        webbrowser.open_new_tab(song.artists[0].link)
+                else:
+                    options = song.format_artists_list()
+                    if not options:
+                        return
+                    result = await self.app.push_screen(SelectionScreen(options), wait_for_dismiss=True)
+                    if result is not None:
+                        webbrowser.open_new_tab(song.artists[result].link)
             case 3:
                 # pylance keep saying no overload for await push_screen
                 if song.album and await self.app.push_screen(
@@ -225,7 +235,7 @@ class SearchPage(BasePage):
     def action_toggle_favorite(self) -> None:
         if self.client.logged_in:
             self.favorites_only = not self.favorites_only
-            self.query_one(FavoriteButton).set_state(self.favorites_only)
+            self.query_one(FavoriteButton).set_toggle_state(self.favorites_only)
         else:
             self.notify("Must be logged in to toggle favorite only", severity="warning")
 
@@ -241,22 +251,39 @@ class SearchPage(BasePage):
 
     @on(RandomSongButton.Pressed, "RandomSongButton")
     async def request_random(self) -> None:
-        random = random_choice(list(self.search_result))
-        await self.client.request_song(random)
+        if len(self._search_list) > 0:
+            random = random_choice(self._search_list)
+            self._search_list.remove(random)
+        else:
+            self.notify("No more songs to request!", severity="warning")
+            return
+
+        res: Song | RequestError = await self.client.request_song(random, exception_on_error=False)
+        if isinstance(res, Song):
+            title = res.format_title(romaji_first=Config.get_config().display.romaji_first)
+            artist = res.format_artists(romaji_first=Config.get_config().display.romaji_first)
+            self.notify(
+                f"{title}" + f" by [{Theme.ACCENT}]{artist}[/]" if artist else "",
+                title="Sent to queue",
+            )
+        elif res == RequestError.FULL:
+            self.notify("All requests have been used up for today!", severity="warning")
+        else:
+            self.notify("No more songs to request!", severity="warning")
 
     @on(RandomFavoriteButton.Pressed, "RandomFavoriteButton")
     async def request_random_favorite(self) -> None:
-        res: Song | None = await self.client.request_random_favorite(exception_on_error=False)
+        res: Song | RequestError = await self.client.request_random_favorite(exception_on_error=False)
         romaji_first = Config.get_config().display.romaji_first
-        if not res:
-            self.notify("All requests have been used up for today!", severity="warning")
-        else:
+        if isinstance(res, Song):
             title = res.format_title(romaji_first=romaji_first)
             artist = res.format_artists(romaji_first=romaji_first)
             self.notify(
                 f"{title}" + f" by [{Theme.ACCENT}]{artist}[/]" if artist else "",
                 title="Sent to queue",
             )
+        else:
+            self.notify("All requests have been used up for today!", severity="warning")
 
     def ellipsis(self, text: str | None, max_length: int) -> str:
         if not text:

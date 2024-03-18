@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, Optional
 
 import mpv  # type: ignore
-from rich.text import TextType
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
@@ -12,12 +11,12 @@ from textual.message import Message
 from textual.reactive import var
 from textual.validation import Function, Validator
 from textual.widget import Widget
-from textual.widgets import Button, Collapsible, Input, Label, Switch, TextArea  # type: ignore
-from textual.widgets._button import ButtonVariant
+from textual.widgets import Collapsible, Input, Label, Switch, TextArea
 
 from ..data.config import Config
 from ..listen.client import ListenClient
 from .base import BasePage
+from .custom import StaticButton as Button
 
 DOC: dict[str, str] = {
     "client.username": "Your login username",
@@ -43,21 +42,6 @@ DOC: dict[str, str] = {
     "player.mpv_options": "MPV options to pass to mpv (see https://mpv.io/manual/master/#options)",
     "advance.verbose": "Enable verbose logging and add an additional `log` tab for debugging",
 }
-
-
-class Button(Button):
-    def __init__(  # noqa: PLR0913
-        self,
-        label: TextType | None = None,
-        variant: ButtonVariant = "default",
-        *,
-        name: str | None = None,
-        id: str | None = None,  # noqa: A002
-        classes: str | None = None,
-        disabled: bool = False,
-    ):
-        super().__init__(label, variant, name=name, id=id, classes=classes, disabled=disabled)
-        self.can_focus = False
 
 
 @dataclass

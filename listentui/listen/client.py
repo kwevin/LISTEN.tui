@@ -3,6 +3,7 @@ import time
 from base64 import b64decode
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from functools import wraps
 from string import Template
 from typing import Any, Callable, Coroutine, Optional, Self, Union, overload
@@ -24,6 +25,7 @@ from .types import (
     Image,
     PlayStatistics,
     Requester,
+    Socials,
     Song,
     SongID,
     Source,
@@ -31,6 +33,16 @@ from .types import (
     SystemFeed,
     User,
 )
+
+
+class NotAuthenticatedError(Exception):
+    pass
+
+
+class RequestError(Enum):
+    NULL = 0
+    FULL = 1
+    IN_QUEUE = 2
 
 
 @dataclass
@@ -49,10 +61,6 @@ class Queries:
     search: DocumentNode
     request_song: DocumentNode
     request_random_song: DocumentNode
-
-
-class NotAuthenticatedError(Exception):
-    pass
 
 
 def requires_auth(func: Callable[..., Coroutine[Any, Any, Any]]) -> Any:
@@ -147,6 +155,11 @@ class ListenClient:
                             nameRomaji
                             image
                         }
+                        uploader {
+                            uuid
+                            displayName
+                            username
+                        }
                         duration
                         played
                         titleRomaji
@@ -200,6 +213,9 @@ class ListenClient:
                 album(id: $$id) {
                     ${generic}
                     image
+                    songs {
+                        ${song}
+                    }
                 }
             }
         """
@@ -212,6 +228,23 @@ class ListenClient:
                     image
                     characters {
                         ${generic}
+                    }
+                    links {
+                        name
+                        url
+                    }
+                    songs {
+                        count
+                    }
+                    albums {
+                        ${generic}
+                        image
+                        songs {
+                            ${song}
+                        }
+                    }
+                    songsWithoutAlbum {
+                        ${song}
                     }
                 }
             }
@@ -438,6 +471,7 @@ class ListenClient:
             name=album["name"],
             name_romaji=album["nameRomaji"],
             image=Image.from_source("albums", album["image"]),
+            songs=[Song.from_data(song) for song in album["songs"]],
         )
 
     async def artist(self, artist_id: Union[ArtistID, int]) -> Artist | None:
@@ -453,8 +487,30 @@ class ListenClient:
             name=artist["name"],
             name_romaji=artist["nameRomaji"],
             image=Image.from_source("artists", artist["image"]),
-            character=[Character(character["id"]) for character in artist["characters"]]
+            characters=[Character(character["id"]) for character in artist["characters"]]
             if len(artist["characters"]) != 0
+            else None,
+            socials=[Socials(name=social["name"], url=social["url"]) for social in artist["links"]],
+            song_count=int(
+                artist["songs"]["count"] + len(artist["songsWithoutAlbum"]) if artist["songsWithoutAlbum"] else 0
+            )
+            if artist["songs"]["count"]
+            else None,
+            album_count=len(artist["albums"]) if artist["albums"] else None,
+            albums=[
+                Album(
+                    id=album["id"],
+                    name=album["name"],
+                    name_romaji=album["nameRomaji"],
+                    image=Image.from_source("albums", album["image"]),
+                    songs=[Song.from_data(song) for song in album["songs"]],
+                )
+                for album in artist["albums"]
+            ]
+            if len(artist["albums"]) != 0
+            else None,
+            songs_without_album=[Song.from_data(song) for song in artist["songsWithoutAlbum"]]
+            if len(artist["songsWithoutAlbum"]) != 0
             else None,
         )
 
@@ -584,7 +640,7 @@ class ListenClient:
         await self._execute(document=query, variable_values=params)
 
     @requires_auth
-    async def request_song(self, song_id: Union[SongID, int], exception_on_error: bool = True) -> Song | None:
+    async def request_song(self, song_id: Union[SongID, int], exception_on_error: bool = True) -> Song | RequestError:
         """REQUIRED: logged in user\n
         request a song\n
         raises NotAuthenticatedError if not logged in,
@@ -595,8 +651,14 @@ class ListenClient:
         if not exception_on_error:
             try:
                 res = await self._execute(document=query, variable_values=params)
-            except TransportQueryError:
-                return None
+            except TransportQueryError as err:
+                if not err.errors:
+                    return RequestError.NULL
+                if err.errors[0]["message"] == "All requests used up for today.":
+                    return RequestError.FULL
+                if err.errors[0]["message"] == "Song already queued.":
+                    return RequestError.IN_QUEUE
+                return RequestError.NULL
         else:
             res = await self._execute(document=query, variable_values=params)
 
@@ -606,7 +668,7 @@ class ListenClient:
     async def request_random_favorite(
         self,
         exception_on_error: bool = True,
-    ) -> Song | None:
+    ) -> Song | RequestError:
         """REQUIRED: logged in user\n
         request a random user favorited song\n
         raises NotAuthenticatedError if not logged in,
@@ -617,8 +679,22 @@ class ListenClient:
             try:
                 res = await self._execute(document=query)
             except TransportQueryError:
-                return None
+                return RequestError.FULL
         else:
             res = await self._execute(document=query)
 
         return Song.from_data(res["requestRandomFavorite"])
+
+
+# if __name__ == "__main__":
+#     import asyncio
+
+#     from rich.pretty import pprint
+
+#     async def main():
+#         client = ListenClient.get_instance()
+#         song = await client.song(12905)
+#         pprint(song)
+#         pprint(song.format_source(romaji_first=True))
+
+#     asyncio.run(main())

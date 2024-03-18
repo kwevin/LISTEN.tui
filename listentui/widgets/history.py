@@ -13,10 +13,12 @@ from textual.widgets import Label
 from ..data.config import Config
 from ..data.theme import Theme
 from ..listen.client import ListenClient
-from ..listen.types import PlayStatistics, Song, SongID
+from ..listen.types import PlayStatistics, SongID
 from ..screen.modal import ConfirmScreen, SelectionScreen
+from ..screen.popup import SongScreen
 from .base import BasePage
-from .datatable import VimDataTable as DataTable
+from .custom import ExtendedDataTable as DataTable
+from .mpvplayer import MPVStreamPlayer
 
 
 class HistoryPage(BasePage):
@@ -34,7 +36,8 @@ class HistoryPage(BasePage):
     """
     BINDINGS: ClassVar[list[BindingType]] = [Binding("ctrl+r", "refresh", "Refresh")]
 
-    history_result: var[list[PlayStatistics]] = var([], init=False)
+    history_result: var[dict[SongID, PlayStatistics]] = var({}, init=False)
+    favorited: var[dict[SongID, bool]] = var({}, init=False)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -47,11 +50,8 @@ class HistoryPage(BasePage):
     def on_focus(self) -> None:
         self.query_one(DataTable).focus()
 
-    def search_song(self, song_id: SongID) -> Song | None:
-        for history in self.history_result:
-            if history.song.id == song_id:
-                return history.song
-        return None
+    def search_song(self, song_id: SongID | int) -> PlayStatistics:
+        return self.history_result[SongID(song_id)]
 
     @work(group="table")
     async def on_mount(self) -> None:
@@ -66,19 +66,18 @@ class HistoryPage(BasePage):
         self.update_history()
 
     @work(group="table")
-    async def watch_history_result(self, histories: list[PlayStatistics]) -> None:
+    async def watch_history_result(self, histories: dict[SongID, PlayStatistics]) -> None:
         romaji_first = Config.get_config().display.romaji_first
         data_table = self.query_one(DataTable)
         data_table.clear()
-        favorites: dict[SongID, bool] = {}
         if self.client.logged_in:
-            favorites = await self.client.check_favorite([history.song.id for history in histories])
-        for history in histories:
+            self.favorited = await self.client.check_favorite(list(histories))
+        for history in histories.values():
             song = history.song
             row = [
-                Text(str(song.id), style=f"bold {Theme.ACCENT}") if favorites.get(song.id) else Text(str(song.id)),
+                Text(str(song.id), style=f"{Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
                 self.ellipsis(song.format_title(romaji_first=romaji_first), 50),
-                Text(str(history.requester.display_name), style=f"bold {Theme.ACCENT}") if history.requester else "",
+                Text(str(history.requester.display_name), style=f"{Theme.ACCENT}") if history.requester else "",
                 history.created_at.strftime("%d-%m-%Y %H:%M:%S"),
                 self.ellipsis(song.format_artists(romaji_first=romaji_first), 40),
                 song.format_album(romaji_first=romaji_first),
@@ -88,33 +87,41 @@ class HistoryPage(BasePage):
         data_table.refresh(layout=True)
 
     @work(group="table")
-    async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:  # noqa: PLR0912
+    async def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
         data_table = self.query_one(DataTable)
         column = event.coordinate.column
-        if column == 1:  # TODO: make this request the song instead
-            return
         id_coord = Coordinate(event.coordinate.row, 0)
         _id: Text = data_table.get_cell_at(id_coord)
         song_id = SongID(int(_id.plain))
-        song = self.search_song(song_id) or await self.client.song(song_id)
+        song = self.search_song(song_id).song
         romaji_first = Config.get_config().display.romaji_first
-        if not song:
-            return
         match column:
             case 0:
-                if self.client.logged_in:
-                    if await self.app.push_screen(ConfirmScreen(label="Favorite Song?"), wait_for_dismiss=True):
-                        await self.client.favorite_song(song_id)
-                        state: bool = await self.client.check_favorite(song_id)
-                        data_table.update_cell_at(
-                            id_coord, Text(str(song_id), style=f"bold {Theme.ACCENT}") if state else Text(str(song_id))
-                        )
-                        self.notify(
-                            f"{'Favorited' if state else 'Unfavorited'} "
-                            + f"{song.format_title(romaji_first=romaji_first)}"
-                        )
-                else:
-                    self.notify("Must be logged in to favorite song", severity="warning")
+                if not self.client.logged_in:
+                    return
+                state: bool = self.favorited.get(song_id, False)
+                if await self.app.push_screen(
+                    ConfirmScreen(label=f"{'Unfavorite' if state else 'Favorite'} Song?"), wait_for_dismiss=True
+                ):
+                    await self.client.favorite_song(song_id)
+                    data_table.update_cell_at(
+                        id_coord, Text(str(song_id), style=f"{Theme.ACCENT}") if not state else Text(str(song_id))
+                    )
+                    self.notify(
+                        f"{'Unfavorited' if state else 'Favorited'} "
+                        + f"{song.format_title(romaji_first=romaji_first)}"
+                    )
+                    self.favorited[song_id] = not state
+            case 1:
+                favorited_state = await self.app.push_screen(
+                    SongScreen(song, self.app.query_one(MPVStreamPlayer), self.favorited.get(song_id, False)),
+                    wait_for_dismiss=True,
+                )
+                self.favorited[song_id] = favorited_state
+                data_table.update_cell_at(
+                    id_coord,
+                    Text(str(song_id), style=f"{Theme.ACCENT}") if favorited_state else Text(str(song_id)),
+                )
             case 4:
                 if song.artists:
                     if len(song.artists) == 1:
@@ -128,13 +135,16 @@ class HistoryPage(BasePage):
                         if result is not None:
                             webbrowser.open_new_tab(song.artists[result].link)
             case 5:
+                # pylance keep saying no overload for await push_screen
                 if song.album and await self.app.push_screen(
-                    ConfirmScreen(label="Open Album Page?"), wait_for_dismiss=True
+                    ConfirmScreen(label="Open Album Page?"),
+                    wait_for_dismiss=True,  # type: ignore
                 ):
                     webbrowser.open_new_tab(song.album.link)
             case 6:
                 if song.source and await self.app.push_screen(
-                    ConfirmScreen(label="Open Source Page?"), wait_for_dismiss=True
+                    ConfirmScreen(label="Open Source Page?"),
+                    wait_for_dismiss=True,  # type: ignore
                 ):
                     webbrowser.open_new_tab(song.source.link)
             case _:
@@ -143,13 +153,23 @@ class HistoryPage(BasePage):
     @work(group="table")
     async def update_history(self) -> None:
         data_table = self.query_one(DataTable)
+        amount = Config.get_config().display.history_amount
         data_table.loading = True
-        self.history_result = await self.client.history(100, 0)
+        history = await self.client.history(amount, 1)
+        self.history_result = {history.song.id: history for history in history}
         data_table.loading = False
 
     def action_refresh(self) -> None:
         self.update_history()
         self.query_one(Label).update(f"Last Updated: {datetime.now().strftime('%H:%M:%S')}")
+
+    @work(group="table")
+    async def update_one(self) -> None:
+        data_table = self.query_one(DataTable)
+        data_table.loading = True
+        history = await self.client.history(1, 1)
+        self.history_result = {history[0].song.id: history[0], **self.history_result}
+        data_table.loading = False
 
     def ellipsis(self, text: str | None, max_length: int) -> str:
         if not text:

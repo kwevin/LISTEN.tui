@@ -4,7 +4,7 @@ from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Center, Horizontal, Vertical
-from textual.reactive import reactive
+from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import Button, Label, Static
 
@@ -115,20 +115,23 @@ class FavoriteButton(ToggleButton):
 
 
 class VolumeButton(ToggleButton):
-    volume: reactive[int] = reactive(Config.get_config().persistant.volume, init=False, layout=True)
-    is_muted: reactive[bool] = reactive(False, init=False, layout=True)
+    volume: var[int] = var(Config.get_config().persistant.volume, init=False)
+    muted: var[bool] = var(False, init=False)
 
     def __init__(self):
         super().__init__(f"Volume: {self.volume}", "Muted")
 
     def watch_volume(self, new: int) -> None:
         if new == 0:
-            self.set_state(True)
+            self.muted = True
+            self.set_toggle_state(True)
+            return
         self.label = f"Volume: {new}"
+        self.update_default_label(self.label)
         self.app.query_one(MPVStreamPlayer).volume = new
         Config.get_config().persistant.volume = new
 
-    def watch_is_muted(self, new: bool) -> None:
+    def watch_muted(self, new: bool) -> None:
         self.app.query_one(MPVStreamPlayer).volume = 0 if new else self.volume
 
     def validate_volume(self, volume: int) -> int:
@@ -141,12 +144,16 @@ class VolumeButton(ToggleButton):
         return volume
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.is_muted = not self.is_muted
+        self.muted = not self.muted
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        if self.muted:
+            return
         self.volume -= 1
 
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        if self.muted:
+            return
         self.volume += 1
 
 
@@ -246,7 +253,7 @@ class PlayerPage(BasePage):
     @on(MPVStreamPlayer.Restarted)
     def on_player_restart(self, event: MPVStreamPlayer.Restarted) -> None:
         self.query_one(PlayButton).enable()
-        if self.query_one(VolumeButton).is_muted:
+        if self.query_one(VolumeButton).muted:
             self.query_one(MPVStreamPlayer).volume = 0
 
     @on(ListenWebsocket.Updated)
@@ -259,7 +266,7 @@ class PlayerPage(BasePage):
         client = ListenClient.get_instance()
         if client.logged_in:
             favorited: bool = await client.check_favorite(event.data.song.id)
-            self.query_one(FavoriteButton).set_state(favorited)
+            self.query_one(FavoriteButton).set_toggle_state(favorited)
 
         show_tooltip = Config.get_config().display.show_romaji_tooltip
         if show_tooltip:

@@ -29,7 +29,7 @@ def format_time_since(time: datetime, short_hand: bool = False) -> str:  # noqa:
         if hours > 0:
             return f"{round(hours)} hours ago"
         if minutes > 0:
-            return f"{round(minutes)}minutes ago"
+            return f"{round(minutes)} minutes ago"
         return "just now"
 
     string: list[str] = []
