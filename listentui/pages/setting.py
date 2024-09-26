@@ -51,6 +51,13 @@ class Setting:
     catagory: str
     option: str
     value: Any
+    dirty: bool = False
+
+    def set_dirty(self):
+        self.dirty = True
+
+    def reset_dirty(self):
+        self.dirty = False
 
 
 class Generic(Horizontal):
@@ -65,12 +72,13 @@ class Generic(Horizontal):
     }
     """
 
-    def __init__(self, setting: Setting, append_id: bool = True) -> None:
+    def __init__(self, setting: Setting, append_id: bool = True, manual_handling: bool = False) -> None:
         if append_id:
             super().__init__(id=f"setting-{setting.catagory}-{setting.option}")
         else:
             super().__init__()
         self.setting = setting
+        self.manual_handling = manual_handling
 
 
 class GenericSwitch(Generic):
@@ -101,8 +109,9 @@ class GenericSwitch(Generic):
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         self.setting.value = event.value
-        config = Config.get_config()
-        setattr(getattr(config, self.setting.catagory), self.setting.option, event.value)
+        self.setting.set_dirty()
+        # config = Config.get_config()
+        # setattr(getattr(config, self.setting.catagory), self.setting.option, event.value)
 
 
 class GenericField(Generic):
@@ -157,8 +166,9 @@ class GenericField(Generic):
         if event.validation_result and not event.validation_result.is_valid:
             return
         self.setting.value = int(event.value) if self.is_int else event.value
-        config = Config.get_config()
-        setattr(getattr(config, self.setting.catagory), self.setting.option, self.setting.value)
+        self.setting.set_dirty()
+        # config = Config.get_config()
+        # setattr(getattr(config, self.setting.catagory), self.setting.option, self.setting.value)
 
 
 class Login(Generic):
@@ -199,6 +209,11 @@ class Login(Generic):
         state = input_field.password
         self.query_one("#show", Button).variant = "default" if state else "success"
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.setting.value = event.value
+        # we only want to save if it is correct
+        self.setting.reset_dirty()
+
     @work(group="setting")
     @on(Button.Pressed, "#login")
     async def login(self, event: Button.Pressed) -> None:
@@ -218,6 +233,7 @@ class Login(Generic):
         else:
             event.control.variant = "success"
             self.notify("Successfully logged in", title="Login Success")
+            self.setting.set_dirty()
 
 
 class MPVOptions(Generic):
@@ -244,7 +260,7 @@ class MPVOptions(Generic):
     checked: var[bool] = var(False, init=False)
 
     def __init__(self, setting: Setting) -> None:
-        super().__init__(setting)
+        super().__init__(setting, manual_handling=True)
         self.default_options: dict[str, Any] = setting.value
 
     def compose(self) -> ComposeResult:
@@ -366,9 +382,10 @@ class SettingPage(BasePage):
     }
     """
 
-    class SettingApplied(Message):
-        def __init__(self) -> None:
+    class RequestRestart(Message):
+        def __init__(self, items: set[str]) -> None:
             super().__init__()
+            self.items = items
 
     def __init__(self) -> None:
         super().__init__()
@@ -403,26 +420,25 @@ class SettingPage(BasePage):
                         yield GenericField(setting, is_int=True)
         yield Button("Apply", id="apply")
 
+    def on_mount(self) -> None:
+        for widget in self.query(Generic):
+            widget.setting.reset_dirty()
+
     def get_override(self, catagory: str, option: str) -> Widget | None:
         return self.override.get(f"{catagory}.{option}")
 
     @on(Button.Pressed, "#apply")
     def apply(self) -> None:
-        # it saves it here but internally the setting is changed live
-        # might be better to store like a fake config
-        # and overwrite the config with it after
-        Config.get_config().save()
-        self.post_message(self.SettingApplied())
-
-
-if __name__ == "__main__":
-    from textual.app import App
-    from textual.widgets import Footer
-
-    class TestApp(App[None]):
-        def compose(self) -> ComposeResult:
-            yield SettingPage()
-            yield Footer()
-
-    app = TestApp()
-    app.run()
+        items: set[str] = set()
+        config = Config.get_config()
+        for widget in self.query(Generic):
+            if not widget.id:
+                continue
+            if widget.manual_handling:
+                continue
+            if widget.setting.dirty:
+                setattr(getattr(config, widget.setting.catagory), widget.setting.option, widget.setting.value)
+                widget.setting.reset_dirty()
+                items.add(widget.setting.catagory)
+        config.save()
+        self.post_message(self.RequestRestart(items))

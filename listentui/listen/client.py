@@ -16,7 +16,7 @@ from gql import Client, gql
 from gql.client import ReconnectingAsyncClientSession
 from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.exceptions import TransportQueryError
-from graphql import DocumentNode
+from graphql import DocumentNode, print_ast
 
 from listentui.listen.interface import (
     Album,
@@ -483,6 +483,7 @@ class ListenClient:
 
     async def close(self) -> None:
         await self._client.close_async()
+        self._session = None
 
     async def regenerate_token(self) -> None:
         """regenerate a new token for the current user"""
@@ -512,9 +513,10 @@ class ListenClient:
         res = await self._execute_cached(document=document, variable_values=frozendict(variable_values))  # type: ignore
         hits = self._execute_cached.cache_info().hits
         if hits > self._last_hit:
-            self._log.debug("Using cached result")
+            query = {"query": print_ast(document)}
+            self._log.debug(f">>> {query}")
+            self._log.debug("<<< Using cached result: " + str(res)[0:100] + "...")
             self._last_hit = hits
-            self._log.debug(str(res)[0:100] + "...")
         return res
 
     async def _execute_uncached(

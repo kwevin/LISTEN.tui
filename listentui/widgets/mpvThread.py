@@ -47,7 +47,6 @@ class MPVWatcher(Thread):
         self.base_timeout = Config.get_config().player.restart_timeout
         self.retries = 0
         self.soft_retry_cap = 5
-        self.hard_retry_cap = 10
         self.timeout_cap = 60
         self.terminated = False
 
@@ -77,13 +76,7 @@ class MPVWatcher(Thread):
     def dispatch_restart(self) -> None:
         self.retries += 1
         timeout = min(self.base_timeout + 5 * self.retries, self.timeout_cap)
-        self._log.debug(
-            f"Attempting restart: {self.retries}/{self.soft_retry_cap} max: {self.hard_retry_cap} current timeout: {timeout}"  # noqa: E501
-        )
-
-        if self.retries >= self.hard_retry_cap:
-            self.player.main.post_message(self.player.Fail())
-            return
+        self._log.debug(f"Attempting restart: {self.retries} current timeout: {timeout}")
 
         try:
             if self.retries > self.soft_retry_cap:
@@ -95,9 +88,7 @@ class MPVWatcher(Thread):
             self.retries = 0
             self.player.main.post_message(self.player.SuccessfulRestart())
         except TimeoutError:
-            self.player.main.post_message(
-                self.player.FailedRestart(self.retries, timeout, self.soft_retry_cap, self.hard_retry_cap)
-            )
+            self.player.main.post_message(self.player.FailedRestart(self.retries, self.soft_retry_cap, timeout))
 
     def terminate(self) -> None:
         self.terminated = True
@@ -112,6 +103,7 @@ class MPVThread(Thread):
         self.main = main
         self.stream_url = "https://listen.moe/stream"
         self.player = MPV(ytdl=True, **self.get_options(), terminal=False, log_handler=self.log_handler)
+        MPVThread.instance = self
         self.watcher = MPVWatcher(self)
         self.muted_volume = 0
         self.cache: MPVThread.DemuxerCacheState | None = None
@@ -127,9 +119,8 @@ class MPVThread(Thread):
     @dataclass
     class FailedRestart(Message):
         retry_no: int
-        timeout: int
         soft_cap: int
-        hard_cap: int
+        timeout: int
 
     class SuccessfulRestart(Message):
         def __init__(self) -> None:
@@ -295,10 +286,9 @@ class MPVThread(Thread):
         try:
             self.start_mpv()
             self.watcher.start()
-        except TimeoutError:
+        except (TimeoutError, ShutdownError):
             self.main.post_message(self.Fail())
             return
-
         while not self.terminated:
             sleep(1)
         MPVThread.instance = None
@@ -313,7 +303,6 @@ class MPVThread(Thread):
 
     def start_mpv(self, timeout: int = 120) -> None:
         self.setup_mpv(timeout)
-        MPVThread.instance = self
         self.main.post_message(self.Started())
 
     @staticmethod
@@ -415,6 +404,8 @@ class MPVThread(Thread):
         self.player.terminate()
         self.watcher.terminate()
         self.terminated = True
+        if self.watcher.is_alive():
+            self.watcher.join()
 
     @staticmethod
     def terminate_preview() -> None:

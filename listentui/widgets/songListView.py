@@ -42,7 +42,7 @@ class SongItem(ListItem):
     def __init__(self, song: Song):
         self.song = song
         title = song.format_title()
-        artists = song.format_artists_list() or []
+        artists = song.format_artists_list(show_character=False) or []
         super().__init__(
             ScrollableLabel(
                 Text.from_markup(f"{title}"),
@@ -145,9 +145,9 @@ class AdvSongItem(ListItem):
             super().__init__()
         self.song = song
         self.title = song.format_title()
-        self.artists = song.format_artists_list() or []
-        self.source = song.format_source() or ""
-        self.album = song.format_album() or ""
+        self.artists = song.format_artists_list(show_character=False) or []
+        self.source = song.format_source()
+        self.album = song.format_album()
         self.set_class(favorited, "favorited")
 
     def compose(self) -> ComposeResult:

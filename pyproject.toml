@@ -13,7 +13,7 @@ rich = "^13.7.1"
 tomli = "^2.0.1"
 tomli-w = "^1.0.0"
 markdownify = "^0.12.1"
-textual = { extras = ["syntax"], version = "^0.79.0" }
+textual = { extras = ["syntax"], version = "^0.80.1" }
 gql = { extras = ["aiohttps"], version = "^3.5.0" }
 xdg = "^6.0.0"
 frozendict = "^2.4.4"
@@ -35,6 +35,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 listentui = 'listentui.__main__:run'
+
+[tool.pyright]
+exclude = ["**/_legacy"]
 
 [tool.ruff.lint]
 preview = true
@@ -66,6 +69,7 @@ line-length = 120
 ignore = [
     "PLR6301",
     "F401",
+    "N999",
     "COM812",
     "PLW3201",
     "PLR0904",

@@ -29,6 +29,7 @@ from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ListenWsData, Song
 from listentui.widgets.durationProgressBar import DurationProgressBar
+from listentui.widgets.floatingPlayer import HideFloatingPlayer, ShowFloatingPlayer
 from listentui.widgets.mpvThread import MPVThread
 from listentui.widgets.songContainer import SongContainer
 from listentui.widgets.vanityBar import VanityBar
@@ -182,6 +183,11 @@ class Player(Widget):
     }
     """
 
+    class PlayerMounted(Message):
+        def __init__(self, player: Player) -> None:
+            super().__init__()
+            self.player = player
+
     class WebsocketUpdated(Message):
         def __init__(self, data: ListenWsData) -> None:
             super().__init__()
@@ -197,19 +203,20 @@ class Player(Widget):
         super().__init__()
         self._log = getLogger(__name__)
         self.ws_data: ListenWsData | None = None
+        self.song: Song | None = None
         self.progress_bar = DurationProgressBar(stop=True, pause_on_end=True)
         self.player = MPVThread(self)
         self.retries = 0
         self.websocket_time = 0
         self.mpv_time = 0
         self.start_time = time.time()
+        self.on_display = False
         self.mpv_cache: MPVThread.DemuxerCacheState | None = None
         self.presence = AioPresence(PRESENSE_APPLICATION_ID)
         self.presense_connected = False
-        # self.can_update = True
         self.set_interval(1, self.update_time_elapsed)
         self.set_interval(1, self.update_cache)
-        self.websocket_update = Signal[ListenWsData](self, "ws_update")
+        self.websocket_update = Signal[tuple[ListenWsData, Song]](self, "ws_update")
 
     def compose(self) -> ComposeResult:
         yield VanityBar()
@@ -224,6 +231,7 @@ class Player(Widget):
             yield Label(id="time")
 
     async def on_mount(self) -> None:
+        self.post_message(self.PlayerMounted(self))
         self.loading = True
         self.websocket()
         self.player.start()
@@ -240,13 +248,11 @@ class Player(Widget):
         self.query_one("#cache", Label).tooltip = "Cache"
         self.query_one("#time", Label).tooltip = "Uptime"
 
-    def update_retries(self, retry: int, soft_cap: int, hard_cap: int, timeout: int) -> None:
+    def update_retries(self, retry: int, soft_cap: int, timeout: int) -> None:
         retries = self.query_one("#retries", Label)
         if retry > 0:
-            retries.update(f"{retry}/{soft_cap} | {hard_cap}!")
+            retries.update(f"{retry}!")
             if retry > soft_cap:
-                retries.styles.color = "pink"
-            elif retry > hard_cap:
                 retries.styles.color = "red"
             else:
                 retries.styles.color = "yellow"
@@ -288,60 +294,43 @@ class Player(Widget):
         self.websocket_time = time.time()
         self.update_delay()
 
-    @on(WebsocketUpdated)
-    def show_toast(self, event: WebsocketUpdated) -> None:
-        if self.visible:
-            return
-        title = event.data.song.format_title()
-        artist = event.data.song.format_artists()
-        self.notify(f"{title}" + f"\n[red]{artist}[/]" if artist else "", title="Now Playing")
-
-    @on(MPVThread.Started)
-    def on_started(self) -> None:
-        self.progress_bar.resume()
+    # @on(WebsocketUpdated)
+    # def show_toast(self, event: WebsocketUpdated) -> None:
+    #     if self.visible:
+    #         return
+    #     title = event.data.song.format_title()
+    #     artist = event.data.song.format_artists()
+    #     self.notify(f"{title}" + f"\n[red]{artist}[/]" if artist else "", title="Now Playing")
 
     @on(MPVThread.NewSong)
     @on(MPVThread.Metadata)
     def update_mpv_time(self) -> None:
-        self.progress_bar.resume()
+        self.update_retries(0, 0, 0)
         self.mpv_time = time.time()
         self.update_delay()
 
-    # self.progress_bar.resume()
-    # self.can_update = True
-
     @work
     async def update_container(self, data: ListenWsData) -> None:
-        song = cast(Song, await ListenClient.get_instance().song(data.song.id))
-        self.query_one(SongContainer).update_song(song)
+        self.progress_bar.resume()
+        self.song = cast(Song, await ListenClient.get_instance().song(data.song.id))
+        self.websocket_update.publish((data, self.song))
+
+        self.query_one(SongContainer).update_song(self.song)
         self.query_one(VanityBar).update_vanity(data)
         self.loading = False
 
         if Config.get_config().presence.enable:
-            self.update_presense(data, song)
-
-    # @work(group="wait_update", exclusive=True)
-    # async def can_force_update(self, data: ListenWsData) -> None:
-    #     start = time.time()
-    #     max_wait_time = 8
-    #     if data.song.duration != 0:
-    #         while not self.can_update and time.time() - start < max_wait_time:
-    #             await asyncio.sleep(0.1)
-    #     else:
-    #         self.progress_bar.resume()
-    #     self.query_one(SongContainer).update_song(data.song)
-    #     self.query_one(VanityBar).update_vanity(data)
-    #     self.can_update = False
+            self.update_presense(data, self.song)
 
     @on(MPVThread.FailedRestart)
     def player_failed_restart(self, event: MPVThread.FailedRestart) -> None:
         self.retries = event.retry_no
-        self.update_retries(event.retry_no, event.soft_cap, event.hard_cap, event.timeout)
+        self.update_retries(event.retry_no, event.soft_cap, event.timeout)
 
     @on(MPVThread.SuccessfulRestart)
     def player_sucessful_restart(self, event: MPVThread.SuccessfulRestart) -> None:
         self.retries = 0
-        self.update_retries(0, 0, 0, 0)
+        self.update_retries(0, 0, 0)
 
     @on(MPVThread.Fail)
     def player_failed(self, event: MPVThread.Fail) -> None:
@@ -357,9 +346,7 @@ class Player(Widget):
                     match res["op"]:
                         case 1:
                             self.ws_data = ListenWsData.from_data(res)
-                            # self._log.info(pretty_repr(self.ws_data))
                             self.post_message(self.WebsocketUpdated(self.ws_data))
-                            self.websocket_update.publish(self.ws_data)
                             self.progress_bar.update_progress(self.ws_data.song)
                             self.update_container(self.ws_data)
                         case 0:
@@ -389,12 +376,21 @@ class Player(Widget):
 
     async def connect_presense(self) -> None:
         try:
-            await self.presence.connect()
+            async with asyncio.timeout(5):
+                await self.presence.connect()
             self.presense_connected = True
             self.query_one("#rpc", Label).update("[green]RPC[/]")
         except DiscordNotFound:
             self.query_one("#rpc", Label).update("[red]RPC[/]")
             self.query_one("#rpc", Label).tooltip = "Discord Not Found"
+            return
+        except TimeoutError:
+            self.query_one("#rpc", Label).update("[red]RPC[/]")
+            self.query_one("#rpc", Label).tooltip = "Timed out connecting to discord"
+            return
+        except Exception as exc:
+            self.query_one("#rpc", Label).update("[red]RPC[/]")
+            self.query_one("#rpc", Label).tooltip = f"{exc}"
             return
 
     def sanitise(self, string: str) -> str:
@@ -445,17 +441,22 @@ class Player(Widget):
 
         substitution_dict: dict[str, str] = {
             "id": str(song.id),
-            "title": song.format_title() or "",
-            "artist": song.format_artists() or "",
-            "artist2": song.format_artists(show_character=False) or "",
+            "title": song.format_title(),
+            "title_romaji": song.title_romaji or "",
+            "title_original": song.title or "",
+            "artist": song.format_artists(),
+            "artist_romaji": song.format_artists(romaji_first=True),
+            "artist_original": song.format_artists(romaji_first=False),
+            "artist_no_character": song.format_artists(show_character=False) or "",
             "artist_image": song.artist_image() or "",
-            "album": song.format_album() or "",
+            "album": song.format_album(),
             "album_image": song.album_image() or "",
             "source": song.format_source() or "",
-            "source2": f"[{source}]" if (source := song.format_source()) else "",
+            "source_wrapped": f"[{source}]" if (source := song.format_source()) else "",
             "source_image": song.source_image() or "",
             "requester": data.requester.display_name if data.requester else "",
             "event": data.event.name if data.event else "",
+            "listener": str(data.listener),
         }
 
         presense_type = Activity(config.type)
@@ -488,3 +489,11 @@ class Player(Widget):
     async def on_unmount(self) -> None:
         if self.presense_connected:
             await self.presence.clear()
+
+    def on_hide(self) -> None:
+        self.on_display = False
+        self.post_message(ShowFloatingPlayer())
+
+    def on_show(self) -> None:
+        self.on_display = True
+        self.post_message(HideFloatingPlayer())

@@ -1,4 +1,4 @@
-from listentui.listen.client import ListenClient
+from listentui.listen.client import ListenClient, RequestError
 from listentui.listen.interface import (
     Album,
     AlbumID,
@@ -33,6 +33,7 @@ __all__ = [
     "ListenClient",
     "ListenWsData",
     "PlayStatistics",
+    "RequestError",
     "Requester",
     "Song",
     "SongID",

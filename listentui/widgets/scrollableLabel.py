@@ -51,7 +51,7 @@ class ScrollableLabel(Widget):
 
     def __init__(
         self,
-        *texts: Text,
+        *texts: Text | Iterable[Text],
         sep: str = ", ",
         can_scroll: bool = True,
         highlight_under_mouse: bool = True,
@@ -84,6 +84,7 @@ class ScrollableLabel(Widget):
         self._min_scroll = 0
         self._max_scroll = -1
         self._is_scrolling = False
+        self._has_renderded = False
 
         self._scroll_timer = self.set_interval(speed, self._scroll, pause=True)
         self._unscroll_timer = self.set_interval(return_speed, self._unscroll, pause=True)
@@ -124,7 +125,7 @@ class ScrollableLabel(Widget):
 
         self.set_timer(delay or self._return_delay, self._unscroll_can_resume)
 
-    def update(self, *texts: Text) -> None:
+    def update(self, *texts: Text | Iterable[Text]) -> None:
         """update the text with new texts"""
         self._update_text(texts)
 
@@ -132,8 +133,8 @@ class ScrollableLabel(Widget):
         """append text to the end of the text"""
         self._update_text([*self._original, text])
 
-    def _update_text(self, texts: Iterable[Text]) -> None:
-        self.text = Text(self._sep, overflow="ellipsis", no_wrap=True).join(texts)
+    def _update_text(self, texts: Iterable[Text | Iterable[Text]]) -> None:
+        self.text = self._create_text(texts)
         self._original = list(texts)
         self._update_cell_map(self.text)
         self._update_mapping(texts, self._sep)
@@ -202,8 +203,16 @@ class ScrollableLabel(Widget):
     def _on_resize(self, event: events.Resize) -> None:
         if self._is_scrolling:
             return
+        if not self.visible:
+            return
         self.refresh(layout=True)
         self._reset_state()
+
+    def on_show(self) -> None:
+        if not self._has_renderded:
+            self.refresh(layout=True)
+            self._reset_state()
+            self._has_renderded = True
 
     def _calculate_scrollable_amount(self) -> None:
         default = self._default()
@@ -231,7 +240,20 @@ class ScrollableLabel(Widget):
         self._max_scroll = count
 
     def _default(self) -> Text:
-        return Text(self._sep).join(self._original)
+        return self._create_text(self._original)
+
+    def _create_text(self, texts: Iterable[Text | Iterable[Text]]) -> Text:
+        sep = Text.from_markup(self._sep)
+        sep.overflow = "ellipsis"
+        sep.no_wrap = True
+        flatten_texts: list[Text] = []
+
+        for text in texts:
+            if isinstance(text, Iterable):
+                flatten_texts.append(Text(" ").join(text))
+            else:
+                flatten_texts.append(text)
+        return sep.join(flatten_texts)
 
     def _update_cell_map(self, text: Text) -> None:
         self._cell_map = {char: cached_cell_len(char) for char in text.plain}
@@ -241,21 +263,36 @@ class ScrollableLabel(Widget):
             return 0
         return sum(self._cell_map[char] for char in self._default().plain[:offset])
 
-    def _update_mapping(self, texts: Iterable[Text], sep: str) -> None:
+    def _update_mapping(self, texts: Iterable[Text | Iterable[Text]], sep: str) -> None:
         self._text_mapping = {}
         self._text_cell_mapping = {}
         start = 0
         start_cell = 0
         sep_len = len(Text.from_markup(sep))
         sep_cell = Text.from_markup(sep).cell_len
-        for idx, text in enumerate(texts):
-            text_len = len(text)
-            text_range = TextRange(start, start + text_len)
-            text_cell = TextRange(start_cell, start_cell + text.cell_len)
-            start += text_len + sep_len
-            start_cell += text.cell_len + sep_cell
-            self._text_cell_mapping[text_cell] = text_range
-            self._text_mapping[text_range] = text, idx
+        idx = 0
+        for text in texts:
+            if isinstance(text, Iterable):
+                for segment in text:
+                    text_len = len(segment)
+                    text_range = TextRange(start, start + text_len)
+                    text_cell = TextRange(start_cell, start_cell + segment.cell_len)
+                    start += text_len + 1
+                    start_cell += segment.cell_len + 1
+                    self._text_cell_mapping[text_cell] = text_range
+                    self._text_mapping[text_range] = segment, idx
+                    idx += 1
+                start += sep_len - 1
+                start_cell += sep_cell - 1
+            else:
+                text_len = len(text)
+                text_range = TextRange(start, start + text_len)
+                text_cell = TextRange(start_cell, start_cell + text.cell_len)
+                start += text_len + sep_len
+                start_cell += text.cell_len + sep_cell
+                self._text_cell_mapping[text_cell] = text_range
+                self._text_mapping[text_range] = text, idx
+                idx += 1
 
     def _on_mouse_move(self, event: events.MouseMove) -> None:
         self._mouse_pos = event.x
@@ -335,3 +372,18 @@ class ScrollableLabel(Widget):
 
     def on_hide(self) -> None:
         self._reset_state()
+
+
+if __name__ == "__main__":
+    from textual.app import App, ComposeResult
+
+    class MyApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield ScrollableLabel(sep="_-_-_")
+
+        async def on_mount(self) -> None:
+            label = self.query_one(ScrollableLabel)
+            label.update((Text("One"), Text("Two")), (Text("Four"), Text("Five")))
+
+    app = MyApp()
+    app.run()

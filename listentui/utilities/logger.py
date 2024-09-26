@@ -5,6 +5,7 @@ from queue import Queue
 from typing import Any, ClassVar
 
 from textual.binding import Binding, BindingType
+from textual.events import Resize
 from textual.widgets import RichLog
 
 
@@ -29,7 +30,8 @@ class RichLogExtended(RichLog):
             self.scroll_end()
         self.notify(f"Autoscroll {'enabled' if self.auto_scroll else 'disabled'}")
 
-    def on_resize(self) -> None:
+    def on_resize(self, event: Resize) -> None:
+        super().on_resize(event)
         self.action_empty_queue()
 
     def action_empty_queue(self) -> None:
@@ -48,7 +50,7 @@ def get_logger() -> Logger:
 
 
 def create_logger(verbose: bool) -> Logger:
-    level = logging.DEBUG if verbose else logging.ERROR
+    level = logging.DEBUG if verbose else logging.WARNING
     logging.basicConfig(
         level=level,
         format="(%(asctime)s)[%(levelname)s] %(name)s: %(message)s",

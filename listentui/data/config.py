@@ -1,8 +1,9 @@
 import os
 import sys
 from dataclasses import asdict, dataclass, field
+from logging import getLogger
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, Protocol
 
 import tomli
 import tomli_w
@@ -12,8 +13,12 @@ class InvalidConfigError(Exception):
     pass
 
 
+class ConfigCatagory(Protocol):
+    __dataclass_fields__: ClassVar[dict[str, Any]]
+
+
 @dataclass
-class Client:
+class Client(ConfigCatagory):
     username: str = ""
     """LISTEN.moe login username"""
     password: str = ""
@@ -21,7 +26,7 @@ class Client:
 
 
 @dataclass
-class Presence:
+class Presence(ConfigCatagory):
     enable: bool = True
     """Enable discord's rich presence"""
     type: int = 2
@@ -54,13 +59,13 @@ class Presence:
 
 
 @dataclass
-class Display:
+class Display(ConfigCatagory):
     romaji_first: bool = True
     """Prefer romaji first"""
 
 
 @dataclass
-class Player:
+class Player(ConfigCatagory):
     mpv_options: dict[str, Any] = field(default_factory=dict)
     """MPV options to pass to mpv (see https://mpv.io/manual/master/#options)"""
     inactivity_timeout: int = 5
@@ -85,41 +90,55 @@ class Player:
 
 
 @dataclass
-class Downloader:
+class Downloader(ConfigCatagory):
     use_radio_metadata: bool = True
     """Use the radio given metadata over source"""
 
 
 @dataclass
-class Advance:
+class Advance(ConfigCatagory):
     stats_for_nerd: bool = False
     """Enable verbose logging and more"""
 
 
 @dataclass
-class Persistant:
+class Persistant(ConfigCatagory):
     volume: int = 100
     token: str = ""
 
 
-@dataclass
-class DefaultConfig:
-    client: Client = field(default_factory=Client)
-    display: Display = field(default_factory=Display)
-    presence: Presence = field(default_factory=Presence)
-    player: Player = field(default_factory=Player)
-    downloader: Downloader = field(default_factory=Downloader)
-    advance: Advance = field(default_factory=Advance)
-    persistant: Persistant = field(default_factory=Persistant)
+# @dataclass
+# class DefaultConfig:
+#     client: Client = field(default_factory=Client)
+#     display: Display = field(default_factory=Display)
+#     presence: Presence = field(default_factory=Presence)
+#     player: Player = field(default_factory=Player)
+#     downloader: Downloader = field(default_factory=Downloader)
+#     advance: Advance = field(default_factory=Advance)
+#     persistant: Persistant = field(default_factory=Persistant)
 
 
 class Config:
+    _config_loader: list[tuple[str, type[ConfigCatagory]]] = [  # noqa: RUF012
+        ("client", Client),
+        ("display", Display),
+        ("presence", Presence),
+        ("player", Player),
+        ("downloader", Downloader),
+        ("advance", Advance),
+        ("persistant", Persistant),
+    ]
     config: "Config | None" = None
 
     def __init__(self) -> None:
+        self._log = getLogger(__name__)
         self.config_root = self.get_config_root()
         self.config_file = self.config_root.joinpath("config.toml")
+        self.loading_errors: list[tuple[str, str, str]] = []
+        """(catagory, key, error message)"""
         self._conf: dict[str, Any] = {}
+
+        # for auto-complete
         self.client: Client
         self.presence: Presence
         self.display: Display
@@ -127,12 +146,13 @@ class Config:
         self.downloader: Downloader
         self.advance: Advance
         self.persistant: Persistant
+
         self._load_config()
         Config.config = self
 
     @property
     def config_raw(self) -> dict[str, Any]:
-        return self._conf
+        return {key: asdict(getattr(self, key)) for key, _ in self._config_loader}
 
     def get_config_root(self) -> Path:
         if getattr(sys, "frozen", False):
@@ -158,39 +178,54 @@ class Config:
             self._write_config(self._default())
             self._conf = self._default()
         else:
-            with open(self.config_file, "rb") as f:
-                self._conf = tomli.load(f)
+            self._conf = self._fetch_config()
 
-        self.client = Client(**self._conf["client"])
-        self.presence = Presence(**self._conf["presence"])
-        self.display = Display(**self._conf["display"])
-        self.player = Player(**self._conf["player"])
-        self.downloader = Downloader(**self._conf["downloader"])
-        self.advance = Advance(**self._conf["advance"])
-        self.persistant = Persistant(**self._conf["persistant"])
+        for catagory, loader in self._config_loader:
+            self._try_load(catagory, loader, self._conf[catagory])
+
+    def _try_load(self, catagory: str, loader: type[ConfigCatagory], config: dict[str, Any]) -> None:
+        keys_to_load: list[str] = []
+        keys_failed_to_load: list[str] = []
+        for key in config:
+            if loader.__dataclass_fields__.get(key):
+                keys_to_load.append(key)
+            else:
+                keys_failed_to_load.append(key)
+
+        configs_to_load = {key: value for key, value in config.items() if key in keys_to_load}
+        try:
+            setattr(self, catagory, loader(**configs_to_load))
+        except Exception as e:
+            if isinstance(e, InvalidConfigError):
+                raise e
+            setattr(self, catagory, loader())
+            self._log.warning(f"Unable to load {catagory}, using default...")
+            self._log.exception(e)
+
+        for key in keys_failed_to_load:
+            message = f'Unknown "{key}" found in configuration'
+            self._log.debug(message)
+            self.loading_errors.append((catagory, key, message))
+
+        self._log.debug(f"Loaded {catagory}")
 
     def _write_config(self, config: dict[str, Any]) -> None:
         with open(self.config_file, "wb") as f:
             tomli_w.dump(config, f)
 
+    def _fetch_config(self) -> dict[str, Any]:
+        with open(self.config_file, "rb") as f:
+            return tomli.load(f)
+
     def _default(self) -> dict[str, Any]:
-        return asdict(DefaultConfig())
+        return {key: asdict(loader()) for key, loader in self._config_loader}  # type: ignore
 
     def save(self):
-        self._write_config(
-            asdict(
-                DefaultConfig(
-                    self.client,
-                    self.display,
-                    self.presence,
-                    self.player,
-                    self.downloader,
-                    self.advance,
-                    self.persistant,
-                )
-            )
-        )
-        self._load_config()
+        old_config = self._fetch_config()
+        new_config = {key: asdict(getattr(self, key)) for key, _ in self._config_loader}
+        for key, value in new_config.items():
+            old_config[key].update(value)
+        self._write_config(old_config)
 
     @classmethod
     def get_config(cls) -> "Config":

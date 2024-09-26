@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import ceil
-from typing import Self, cast
+from typing import Literal, Self, cast
 
 from textual import events, on
 from textual.app import ComposeResult
@@ -11,7 +11,98 @@ from textual.message import Message
 from textual.reactive import reactive, var
 from textual.validation import Number
 from textual.widget import Widget
-from textual.widgets import Input, Label
+from textual.widgets import Input, Label, Static
+
+
+class PageNavigationButton(Static, can_focus=True):
+    DEFAULT_CSS = """
+    PageNavigationButton {
+        width: auto;
+        height: 1;
+        padding: 0 1;
+
+        &:hover {
+            tint: $surface-lighten-3 50%;
+        }
+    }
+    """
+
+    class PreviousSelected(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
+    class NextSelected(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
+    class InputSelected(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
+    def __init__(self, navigation_type: Literal["previous", "next", "input"]) -> None:
+        super().__init__(
+            "Prev" if navigation_type == "previous" else ("Next" if navigation_type == "next" else "…"),
+            classes="page_navigator",
+        )
+        self.navigation_type = navigation_type
+
+    @classmethod
+    def previous(cls) -> Self:
+        return cls("previous")
+
+    @classmethod
+    def next(cls) -> Self:
+        return cls("next")
+
+    @classmethod
+    def input(cls) -> Self:
+        return cls("input")
+
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+
+        if self.navigation_type == "previous":
+            self.post_message(self.PreviousSelected())
+        elif self.navigation_type == "next":
+            self.post_message(self.NextSelected())
+        else:
+            self.post_message(self.InputSelected())
+
+
+class PageButton(Static, can_focus=True):
+    DEFAULT_CSS = """
+    PageButton {
+        width: auto;
+        height: 1;
+        padding: 0 1;
+
+        &.current {
+            background: $primary-lighten-2;
+        }
+
+        &:hover {
+            tint: $surface-lighten-3 50%;
+        }
+    }
+    """
+
+    class PageSelected(Message):
+        def __init__(self, page: int) -> None:
+            super().__init__()
+            self.page = page
+
+    def __init__(self, page: int, current: bool = False) -> None:
+        super().__init__(f"{page}", id=f"_page_button_{page}")
+        self.set_class(current, "current")
+        self.page = page
+
+    @classmethod
+    def current_page(cls, page: int) -> Self:
+        return cls(page, True)
+
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+        self.post_message(self.PageSelected(self.page))
 
 
 class PageInputSelector(Widget):
@@ -110,19 +201,9 @@ class PageSwitcher(Horizontal, can_focus=True):
         width: 100%;
         align-horizontal: center;
     }
-    PageSwitcher Label {
-        width: auto;
-        height: 1;
-
-        &.current {
-            background: red;
-            text-style: bold reverse;
-        }
-    }
-
     """
     current_page: var[int] = var(1, init=False, always_update=True)
-    _pages_to_render: reactive[list[Label]] = reactive([], recompose=True)
+    _pages_to_render: reactive[list[Widget]] = reactive([], recompose=True)
 
     class PageChanged(Message):
         def __init__(self, page: int) -> None:
@@ -133,14 +214,10 @@ class PageSwitcher(Horizontal, can_focus=True):
         super().__init__()
         self.end_page = pages or 0
         self.can_render_all = False
-        self.reseting = False
 
     @classmethod
     def calculate(cls, amount_per_page: int, total: int) -> Self:
         return cls(ceil(total / amount_per_page))
-
-    # def render(self) -> RenderResult:
-    #     return "".join(self._pages_to_render)
 
     def compose(self) -> ComposeResult:
         yield from self._pages_to_render
@@ -163,10 +240,10 @@ class PageSwitcher(Horizontal, can_focus=True):
             self.can_render_all = False
         self._pages_to_render = self.create_pages()
 
-    def create_pages(self) -> list[Label]:
+    def create_pages(self) -> list[Widget]:
         if self.end_page == 0:
             return []
-        pages_to_render = [
+        pages_to_render: list[Widget] = [
             self.create_prev_page(),
         ]
         if self.can_render_all:
@@ -200,50 +277,49 @@ class PageSwitcher(Horizontal, can_focus=True):
         pages_to_render.extend([self.create_input_page(), self.create_page(self.end_page), self.create_next_page()])
         return pages_to_render
 
-    def create_page(self, page: int) -> Label:
+    def create_page(self, page: int) -> PageButton:
         if page == self.current_page:
-            label = Label(f"[@click=focused.to_page('{page}')] {page} [/]", id=f"_page-{page}")
-            label.add_class("current")
-            return label
-        return Label(f"[@click=focused.to_page('{page}')] {page} [/]", id=f"_page-{page}")
+            return PageButton.current_page(page)
+        return PageButton(page)
 
     def size_of_page(self, page: int) -> int:
         return len(str(page)) + 2
 
-    def create_input_page(self) -> Label:
-        return Label("[@click=focused.input('')] … [/]")
+    def create_input_page(self) -> PageNavigationButton:
+        return PageNavigationButton.input()
 
-    def create_prev_page(self) -> Label:
-        return Label("[@click=focused.previous]Prev[/]")
+    def create_prev_page(self) -> PageNavigationButton:
+        return PageNavigationButton.previous()
 
-    def create_next_page(self) -> Label:
-        return Label("[@click=focused.next]Next[/]")
+    def create_next_page(self) -> PageNavigationButton:
+        return PageNavigationButton.next()
 
     def watch_current_page(self, new_page: int) -> None:
         self._pages_to_render = self.create_pages()
-        if self.reseting:
-            self.reseting = False
-            return
         self.post_message(self.PageChanged(new_page))
 
-    def action_previous(self) -> None:
+    def on_page_navigation_button_previous_selected(self, event: PageNavigationButton.PreviousSelected) -> None:
+        event.stop()
         self.current_page = max(self.current_page - 1, 1)
 
-    def action_next(self) -> None:
+    def on_page_navigation_button_next_selected(self, event: PageNavigationButton.NextSelected) -> None:
+        event.stop()
         self.current_page = min(self.current_page + 1, self.end_page)
 
-    def action_to_page(self, page: str) -> None:
-        self.current_page = int(page)
+    def on_page_button_page_selected(self, event: PageButton.PageSelected) -> None:
+        event.stop()
+        self.current_page = event.page
 
-    def action_input(self) -> None:
+    def on_page_navigation_button_input_selected(self, event: PageNavigationButton.InputSelected) -> None:
+        event.stop()
         self.screen.query_one(PageInputSelector).show(self.current_page, self.end_page)
 
     def set_page(self, page: int) -> None:
         self.current_page = page
 
     def reset(self) -> None:
-        self.reseting = True
-        self.set_page(1)
+        with self.prevent(self.PageChanged):
+            self.set_page(1)
 
     def update(self, new_end_page: int) -> None:
         self.end_page = new_end_page
@@ -251,3 +327,21 @@ class PageSwitcher(Horizontal, can_focus=True):
 
     def calculate_update_end_page(self, amount_per_page: int, total: int) -> None:
         self.update(ceil(total / amount_per_page))
+
+
+if __name__ == "__main__":
+    from textual.app import App
+
+    class MyApp(App[None]):
+        def compose(self) -> ComposeResult:
+            yield PageSwitcher.calculate(1, 1000)
+
+        async def on_mount(self) -> None:
+            self.set_timer(5, self.query_one(PageSwitcher).reset)
+
+        @on(PageSwitcher.PageChanged)
+        def a(self) -> None:
+            self.notify("kjdfgkjdf")
+
+    app = MyApp()
+    app.run()

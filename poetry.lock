@@ -1545,18 +1545,18 @@ files = [
 
 [[package]]
 name = "textual"
-version = "0.79.0"
+version = "0.80.1"
 description = "Modern Text User Interface framework"
 optional = false
 python-versions = "<4.0.0,>=3.8.1"
 files = [
-    {file = "textual-0.79.0-py3-none-any.whl", hash = "sha256:59785f20e13b0e530e3d21c0fca5eb09bd1ff329f47abce29a8e50a59646228d"},
-    {file = "textual-0.79.0.tar.gz", hash = "sha256:b5ae63ae11227c158da90e486e99a6db7ef198470219edaf8c200a999d27577a"},
+    {file = "textual-0.80.1-py3-none-any.whl", hash = "sha256:9842c93983dbd701a1bca5355fb683ebd7bf3e0edc503a140d946a60619ac0ce"},
+    {file = "textual-0.80.1.tar.gz", hash = "sha256:66b9f89144ec35d74e29b2157d5a946c49c6b024634621d15b68c69cb51c76a0"},
 ]
 
 [package.dependencies]
 markdown-it-py = {version = ">=2.1.0", extras = ["linkify", "plugins"]}
-platformdirs = ">=4.2.2,<5.0.0"
+platformdirs = ">=3.6.0,<5"
 rich = ">=13.3.3"
 tree-sitter = {version = ">=0.20.1,<0.21.0", optional = true, markers = "extra == \"syntax\""}
 tree-sitter-languages = {version = "1.10.2", optional = true, markers = "extra == \"syntax\""}
@@ -2207,4 +2207,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.13"
-content-hash = "615f497c7be7a2477991074bdd4ce3d919e5f00f1419b4461352ab51786bc77e"
+content-hash = "b26cd9cb4ed683063f9cfeb6427ed7cec79e7e5213b46bbfeb3014edbb701d8e"

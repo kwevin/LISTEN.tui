@@ -18,13 +18,9 @@ from listentui.data.theme import Theme
 from listentui.listen import ListenClient, PlayStatistics, SongID
 from listentui.listen.interface import Song
 from listentui.pages.base import BasePage
-from listentui.screen.modal import (
-    AlbumScreen,
-    ArtistScreen,
-    SelectionScreen,
-    SongScreen,
-    SourceScreen,
-)
+from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSourceScreen
+from listentui.screen.modal.selectionScreen import SelectionScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.utilities import de_kuten, format_time_since
 
 
@@ -146,9 +142,9 @@ class HistoryPage(BasePage):
                 de_kuten(song.format_title() or ""),
                 Text(de_kuten(history.requester.display_name), style=f"{Theme.ACCENT}") if history.requester else "",
                 history.created_at.strftime("%d-%m-%Y %H:%M:%S"),
-                de_kuten(song.format_artists() or ""),
-                de_kuten(song.format_album() or ""),
-                de_kuten(song.format_source() or ""),
+                de_kuten(song.format_artists()),
+                de_kuten(song.format_album()),
+                de_kuten(song.format_source()),
             ]
 
             # filter by time
@@ -249,26 +245,26 @@ class HistoryPage(BasePage):
             return
 
         if len(song.artists) == 1:
-            self.app.push_screen(ArtistScreen(song.artists[0].id))
+            self.post_message(SpawnArtistScreen(song.artists[0].id))
         else:
             options = song.format_artists_list()
             if not options:
                 return
             result = await self.app.push_screen_wait(SelectionScreen(options))
             if result is not None:
-                self.app.push_screen(ArtistScreen(song.artists[result].id))
+                self.post_message(SpawnArtistScreen(song.artists[result].id))
 
     def show_album(self, rowkey: RowKey) -> None:
         song = self.get_song(rowkey)
         if not song.album:
             return
-        self.app.push_screen(AlbumScreen(song.album.id))
+        self.post_message(SpawnAlbumScreen(song.album.id))
 
     def show_source(self, rowkey: RowKey) -> None:
         song = self.get_song(rowkey)
         if not song.source:
             return
-        self.app.push_screen(SourceScreen(song.source.id))
+        self.post_message(SpawnSourceScreen(song.source.id))
 
     def get_song(self, rowkey: RowKey) -> Song:
         return self.table_lookup[rowkey].song

@@ -7,6 +7,7 @@ __all__ = ["RichLogExtended", "create_logger", "format_time_since", "get_logger"
 
 def de_kuten(word: str) -> str:
     """Separates dakuten and handakuten"""
+    # return word
     return word.replace("\u3099", "\u309b").replace("\u309a", "\u309c").replace("\u200b", "")
 
 

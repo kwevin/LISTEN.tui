@@ -13,7 +13,8 @@ from textual.widgets import Input, Label, Select, SelectionList
 from listentui.listen.client import ListenClient, RequestError
 from listentui.listen.interface import Song, SongID
 from listentui.pages.base import BasePage
-from listentui.screen.modal import AlbumScreen, ArtistScreen, SongScreen, SourceScreen
+from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSourceScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.widgets.pageSwitcher import PageSwitcher
 from listentui.widgets.songListView import AdvSongItem, SongListView
 
@@ -214,15 +215,15 @@ class SearchPage(BasePage):
 
     @on(SongListView.ArtistSelected)
     async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.app.push_screen(ArtistScreen(event.artist.id))
+        self.post_message(SpawnArtistScreen(event.artist.id))
 
     @on(SongListView.SourceSelected)
     async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.app.push_screen(SourceScreen(event.source.id))
+        self.post_message(SpawnSourceScreen(event.source.id))
 
     @on(SongListView.AlbumSelected)
     async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.app.push_screen(AlbumScreen(event.album.id))
+        self.post_message(SpawnAlbumScreen(event.album.id))
 
     def to_dict(self, songs: list[Song]) -> dict[SongID, Song]:
         return {song.id: song for song in songs}

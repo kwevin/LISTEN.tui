@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from time import time
-from typing import Any, ClassVar, Literal, NewType, Optional, Self, Type, Union
+from typing import Any, ClassVar, Literal, NewType, Self, Type, Union
 
 from markdownify import markdownify  # type: ignore
 
@@ -15,28 +15,39 @@ SongID = NewType("SongID", int)
 SourceID = NewType("SourceID", int)
 
 
-class Base:
-    romaji_first: ClassVar[bool] = False
+class ConfigurableBase:
+    prefer_romaji_first: ClassVar[bool] = False
+
+    @classmethod
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        raise NotImplementedError()
+
+    @staticmethod
+    def to_markdown(string: str) -> str:
+        return markdownify(string)  # type: ignore
+
+    def romaji_first(self, override: bool | None = None) -> bool:
+        return override or self.prefer_romaji_first
 
 
 @dataclass
-class Socials(Base):
+class Socials(ConfigurableBase):
     name: str
     url: str
 
     @classmethod
-    def from_data(cls: Type[Self], social: dict[str, Any]) -> Self:
-        return cls(name=social["name"], url=social["url"])
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        return cls(name=data["name"], url=data["url"])
 
 
 @dataclass
-class Image(Base):
+class Image(ConfigurableBase):
     name: str
     url: str
 
     @classmethod
     def from_source(
-        cls: Type[Self], source: Literal["albums", "artists", "sources"], value: Optional[str] = None
+        cls: Type[Self], source: Literal["albums", "artists", "sources"], value: str | None = None
     ) -> Self | None:
         if not value:
             return None
@@ -54,7 +65,7 @@ class Image(Base):
 
 
 @dataclass
-class User(Base):
+class User(ConfigurableBase):
     uuid: str
     username: str
     display_name: str
@@ -69,21 +80,17 @@ class User(Base):
         self.link = f"https://listen.moe/u/{self.username}"
 
     @classmethod
-    def from_data(cls: Type[Self], user: dict[str, Any]) -> Self:
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
-            uuid=user["uuid"],
-            username=user["username"],
-            display_name=user["displayName"],
-            bio=User.convert_to_markdown(user["bio"]) if user["bio"] else None,
-            favorites=user["favorites"]["count"],
-            uploads=user["uploads"]["count"],
-            requests=user["requests"]["count"],
-            feeds=[SystemFeed.from_data(feed) for feed in user["systemFeed"]],
+            uuid=data["uuid"],
+            username=data["username"],
+            display_name=data["displayName"],
+            bio=User.to_markdown(data["bio"]) if data["bio"] else None,
+            favorites=data["favorites"]["count"],
+            uploads=data["uploads"]["count"],
+            requests=data["requests"]["count"],
+            feeds=[SystemFeed.from_data(feed) for feed in data["systemFeed"]],
         )
-
-    @staticmethod
-    def convert_to_markdown(string: str) -> str:
-        return markdownify(string)  # type: ignore
 
 
 @dataclass
@@ -97,7 +104,7 @@ class CurrentUser(User):
             uuid=user["uuid"],
             username=user["username"],
             display_name=user["displayName"],
-            bio=CurrentUser.convert_to_markdown(user["bio"]) if user["bio"] else None,
+            bio=CurrentUser.to_markdown(user["bio"]) if user["bio"] else None,
             favorites=user["favorites"]["count"],
             uploads=user["uploads"]["count"],
             requests=user["requests"]["count"],
@@ -108,7 +115,7 @@ class CurrentUser(User):
 
 
 @dataclass
-class Album(Base):
+class Album(ConfigurableBase):
     id: AlbumID
     name: str | None
     name_romaji: str | None
@@ -122,38 +129,43 @@ class Album(Base):
         self.link = f"https://listen.moe/albums/{self.id}"
 
     @classmethod
-    def from_data(cls: Type[Self], album: dict[str, Any]) -> Self:
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
-            id=album["id"],
-            name=album.get("name"),
-            name_romaji=album.get("nameRomaji"),
-            image=Image.from_source("albums", album["image"]) if album.get("image") else None,
-            songs=[Song.from_data(song) for song in album["songs"]] if album.get("songs") else None,
-            artists=[Artist.from_data(artist) for artist in album["artists"]] if album.get("artists") else None,
-            socials=[Socials.from_data(social) for social in album["links"]] if album.get("links") else None,
+            id=data["id"],
+            name=data.get("name"),
+            name_romaji=data.get("nameRomaji"),
+            image=Image.from_source("albums", data["image"]) if data.get("image") else None,
+            songs=[Song.from_data(song) for song in data["songs"]] if data.get("songs") else None,
+            artists=[Artist.from_data(artist) for artist in data["artists"]] if data.get("artists") else None,
+            socials=[Socials.from_data(social) for social in data["links"]] if data.get("links") else None,
         )
 
-    def format_name(self) -> str | None:
-        return (self.name_romaji or self.name) if self.romaji_first else (self.name or self.name_romaji)
+    def format_name(self, *, romaji_first: bool | None = None) -> str:
+        name = (self.name_romaji or self.name) if self.romaji_first(romaji_first) else (self.name or self.name_romaji)
+        return name or ""
 
-    def format_socials(self, *, sep: str = ", ") -> str | None:
+    def format_socials(self, *, sep: str = ", ", use_app: bool = False) -> str:
         if not self.socials:
-            return None
+            return ""
+        if use_app:
+            return f"{sep}".join(
+                [f"[@click=app.handle_url('{social.url}')]{social.name}[/]" for social in self.socials]
+            )
         return f"{sep}".join([f"[link={social.url}]{social.name}[/link]" for social in self.socials])
 
 
 @dataclass
-class Artist(Base):
+class Artist(ConfigurableBase):
     id: ArtistID
     name: str | None
     name_romaji: str | None
     image: Image | None
     characters: list[Character] | None
     socials: list[Socials] | None = None
-    song_count: int | None = None
     albums: list[Album] | None = None
     songs_without_album: list[Song] | None = None
     album_count: int | None = None
+    song_count: int = field(init=False)
     link: str = field(init=False)
 
     def __post_init__(self):
@@ -176,31 +188,32 @@ class Artist(Base):
         return hash(f"{self.id}+{self.name}+{self.name_romaji}")
 
     @classmethod
-    def from_data(cls: Type[Self], artist: dict[str, Any]) -> Self:
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
-            id=artist["id"],
-            name=artist.get("name"),
-            name_romaji=artist.get("nameRomaji"),
-            image=Image.from_source("artists", artist["image"]),
-            characters=[Character.from_data(character) for character in artist["characters"]]
-            if artist.get("characters") and len(artist["characters"]) != 0
+            id=data["id"],
+            name=data.get("name"),
+            name_romaji=data.get("nameRomaji"),
+            image=Image.from_source("artists", data["image"]),
+            characters=[Character.from_data(character) for character in data["characters"]]
+            if data.get("characters") and len(data["characters"]) != 0
             else None,
-            socials=[Socials.from_data(social) for social in artist["links"]] if artist.get("links") else None,
-            album_count=len(artist["albums"]) if artist.get("albums") else None,
-            albums=[Album.from_data(album) for album in artist["albums"]]
-            if artist.get("albums") and len(artist["albums"]) != 0
+            socials=[Socials.from_data(social) for social in data["links"]] if data.get("links") else None,
+            album_count=len(data["albums"]) if data.get("albums") else None,
+            albums=[Album.from_data(album) for album in data["albums"]]
+            if data.get("albums") and len(data["albums"]) != 0
             else None,
-            songs_without_album=[Song.from_data(song) for song in artist["songsWithoutAlbum"]]
-            if artist.get("songsWithoutAlbum") and len(artist["songsWithoutAlbum"]) != 0
+            songs_without_album=[Song.from_data(song) for song in data["songsWithoutAlbum"]]
+            if data.get("songsWithoutAlbum") and len(data["songsWithoutAlbum"]) != 0
             else None,
         )
 
-    def format_name(self) -> str | None:
-        return (self.name_romaji or self.name) if self.romaji_first else (self.name or self.name_romaji)
+    def format_name(self, *, romaji_first: bool | None = None) -> str:
+        name = (self.name_romaji or self.name) if self.romaji_first(romaji_first) else (self.name or self.name_romaji)
+        return name or ""
 
-    def format_socials(self, *, sep: str = ", ", use_app: bool = False) -> str | None:
+    def format_socials(self, *, sep: str = ", ", use_app: bool = False) -> str:
         if not self.socials:
-            return None
+            return ""
         if use_app:
             return f"{sep}".join(
                 [f"[@click=app.handle_url('{social.url}')]{social.name}[/]" for social in self.socials]
@@ -209,22 +222,26 @@ class Artist(Base):
 
 
 @dataclass
-class Character(Base):
+class Character(ConfigurableBase):
     id: CharacterID
-    name: Optional[str] = None
-    name_romaji: Optional[str] = None
+    name: str | None = None
+    name_romaji: str | None = None
     link: str = field(init=False)
 
     def __post_init__(self):
         self.link = f"https://listen.moe/characters/{self.id}"
 
     @classmethod
-    def from_data(cls: Type[Self], character: dict[str, Any]) -> Self:
-        return cls(id=character["id"], name=character.get("name"), name_romaji=character.get("nameRomaji"))
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
+        return cls(id=data["id"], name=data.get("name"), name_romaji=data.get("nameRomaji"))
+
+    def format_name(self, romaji_first: bool | None = None) -> str:
+        name = (self.name_romaji or self.name) if self.romaji_first(romaji_first) else (self.name or self.name_romaji)
+        return name or ""
 
 
 @dataclass
-class Source(Base):
+class Source(ConfigurableBase):
     id: SourceID
     name: str | None
     name_romaji: str | None
@@ -237,49 +254,47 @@ class Source(Base):
 
     def __post_init__(self):
         self.link = f"https://listen.moe/sources/{self.id}"
+        if self.description:
+            self.description = self.to_markdown(self.description)
 
     @classmethod
-    def from_data(cls: Type[Self], source: dict[str, Any]) -> Self:
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
-            id=source["id"],
-            name=source.get("name"),
-            name_romaji=source.get("nameRomaji"),
-            image=Image.from_source("sources", source["image"]),
-            description=source.get("description"),
-            socials=[Socials.from_data(social) for social in source["links"]] if source.get("links") else None,
-            songs=[Song.from_data(song) for song in source["songs"]] if source.get("songs") else None,
-            songs_without_album=[Song.from_data(song) for song in source["songsWithoutAlbum"]]
-            if source.get("songsWithoutAlbum") and len(source["songsWithoutAlbum"]) != 0
+            id=data["id"],
+            name=data.get("name"),
+            name_romaji=data.get("nameRomaji"),
+            image=Image.from_source("sources", data["image"]),
+            description=data.get("description"),
+            socials=[Socials.from_data(social) for social in data["links"]] if data.get("links") else None,
+            songs=[Song.from_data(song) for song in data["songs"]] if data.get("songs") else None,
+            songs_without_album=[Song.from_data(song) for song in data["songsWithoutAlbum"]]
+            if data.get("songsWithoutAlbum") and len(data["songsWithoutAlbum"]) != 0
             else None,
         )
 
-    def format_name(self) -> str | None:
-        return (self.name_romaji or self.name) if self.romaji_first else (self.name or self.name_romaji)
+    def format_name(self, *, romaji_first: bool | None = None) -> str:
+        name = (self.name_romaji or self.name) if self.romaji_first(romaji_first) else (self.name or self.name_romaji)
+        return name or ""
 
-    def format_socials(self, *, sep: str = ", ", use_app: bool = False) -> str | None:
+    def format_socials(self, *, sep: str = ", ", use_app: bool = False) -> str:
         if not self.socials:
-            return None
+            return ""
         if use_app:
             return f"{sep}".join(
                 [f"[@click=app.handle_url('{social.url}')]{social.name}[/]" for social in self.socials]
             )
         return f"{sep}".join([f"[link={social.url}]{social.name}[/link]" for social in self.socials])
 
-    def description_to_markdown(self) -> str | None:
-        return markdownify(self.description)  # type: ignore
-
 
 @dataclass
-class Requester(Base):
+class Requester(ConfigurableBase):
     uuid: str
     username: str
     display_name: str
     link: str = field(init=False)
 
     @classmethod
-    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
-        if not data:
-            return None
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(uuid=data["uuid"], username=data["username"], display_name=data["displayName"])
 
     def __post_init__(self):
@@ -292,22 +307,20 @@ class Uploader(Requester):
 
 
 @dataclass
-class Event(Base):
+class Event(ConfigurableBase):
     id: str
     name: str
     slug: str
     image: str
-    presence: Optional[str] = None
+    presence: str | None = None
 
     @classmethod
-    def from_data(cls: Type[Self], data: dict[str, Any] | None) -> Self | None:
-        if not data:
-            return None
+    def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(id=data["id"], name=data["name"], slug=data["slug"], image=data["image"], presence=data["presence"])
 
 
 @dataclass
-class Song(Base):
+class Song(ConfigurableBase):
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
@@ -326,72 +339,61 @@ class Song(Base):
             uploader=Uploader.from_data(data["uploader"]) if data.get("uploader") else None,
         )
 
-    def _artist_list(
-        self,
-        count: Optional[int] = None,
-        *,
-        show_character: bool = False,
-        embed_link: bool = False,
-    ) -> list[str] | None:
+    def get_artist_list(self) -> list[tuple[Artist, Character | None]]:
         if not self.artists:
-            return None
+            return []
 
-        artists: list[str] = []
-        for idx, artist in enumerate(self.artists):
-            if count and idx + 1 > count:
-                return artists
+        character_map: dict[int, Character] = {}
+        if self.characters:
+            character_map = {character.id: character for character in self.characters}
 
-            character_map: dict[int, Character] = {}
-            if show_character and self.characters and artist.characters:
-                character_map: dict[int, Character] = {character.id: character for character in artist.characters}
+        artist_list: list[tuple[Artist, Character | None]] = []
+        for artist in self.artists:
+            characters_in_songs = []
+            if artist.characters:
+                # should only return either an empty list or one result
+                characters_in_songs = [character for character in artist.characters if character_map.get(character.id)]
+            artist_list.append((artist, characters_in_songs[0] if characters_in_songs else None))
 
-            name = (artist.name_romaji or artist.name) if self.romaji_first else (artist.name or artist.name_romaji)
-            character = None
-            character_name = None
+        return artist_list
 
-            if self.characters:
-                character = character_map.get(self.characters[0].id)
-                if character:
-                    character_name = (
-                        (character.name_romaji or character.name)
-                        if self.romaji_first
-                        else (character.name or character.name_romaji)
-                    )
+    def get_artist_strings(self, *, wrap_cv: bool = True, romaji_first: bool | None = None) -> list[tuple[str, str]]:
+        artist_list = self.get_artist_list()
+        artist_set: list[tuple[str, str]] = []
+
+        for artist, character in artist_list:
+            artist_name = artist.format_name(romaji_first=romaji_first)
+            character_name = ""
+            if character:
+                character_name = character.format_name(romaji_first=romaji_first)
+
+            if wrap_cv:
+                artist_set.append((character_name, f"(CV: {artist_name})"))
+            else:
+                artist_set.append((character_name, artist_name))
+
+        return artist_set
+
+    def format_artists_list(self, *, show_character: bool = True, romaji_first: bool | None = None) -> list[str]:
+        artist_list = self.get_artist_list()
+        artist_strings: list[str] = []
+
+        for artist, character in artist_list:
+            artist_name = artist.format_name(romaji_first=romaji_first)
 
             if show_character:
-                if name and character and character_name:
-                    if embed_link:
-                        j = f"[link={character.link}]{character}[/link]"
-                        k = f"(CV: [link={artist.link}]{name}[/link])"
-                        artists.append(f"{j} {k}")
-                    else:
-                        artists.append(f"{character_name} (CV: {name})")
-                elif name:
-                    if embed_link:
-                        artists.append(f"[link={artist.link}]{name}[/link]")
-                    else:
-                        artists.append(name)
-            elif name and embed_link:
-                artists.append(f"[link={artist.link}]{name}[/link]")
-            elif name:
-                artists.append(name)
+                character_name = character.format_name(romaji_first=romaji_first) if character else None
+                artist_strings.append(f"{character_name} (CV: {artist_name})" if character_name else artist_name)
+            else:
+                artist_strings.append(f"{artist_name}")
 
-        return artists
+        return artist_strings
 
-    def format_artists_list(self, show_character: bool = True) -> list[str] | None:
-        return self._artist_list(show_character=show_character)
-
-    def format_artists(
-        self,
-        count: Optional[int] = None,
-        *,
-        show_character: bool = True,
-        embed_link: bool = False,
-    ) -> str | None:
-        formatted_artist = self._artist_list(count=count, show_character=show_character, embed_link=embed_link)
+    def format_artists(self, *, sep: str = ", ", show_character: bool = True, romaji_first: bool | None = None) -> str:
+        formatted_artist = self.format_artists_list(show_character=show_character, romaji_first=romaji_first)
         if not formatted_artist:
-            return None
-        return ", ".join(formatted_artist)
+            return ""
+        return sep.join(formatted_artist)
 
     def artist_image(self) -> str | None:
         if not self.artists:
@@ -400,41 +402,37 @@ class Song(Base):
             return self.artists[0].image.url
         return None
 
-    def _format(self, albs: Union[Album, Source], embed_link: bool = False) -> str | None:
-        name = (albs.name_romaji or albs.name) if self.romaji_first else (albs.name or albs.name_romaji)
+    def _format(self, albs: Union[Album, Source], embed_link: bool = False) -> str:
+        name = (albs.name_romaji or albs.name) if self.romaji_first() else (albs.name or albs.name_romaji)
         if not name:
-            return None
+            return ""
         if embed_link:
             return f"[link={albs.link}]{name}[/link]"
         return name
 
-    def format_album(self, *, embed_link: bool = False) -> str | None:
+    def format_album(self, *, embed_link: bool = False) -> str:
         if not self.album:
-            return None
+            return ""
         return self._format(self.album, embed_link)
 
-    def format_source(self, *, embed_link: bool = False) -> str | None:
+    def format_source(self, *, embed_link: bool = False) -> str:
         if not self.source:
-            return None
+            return ""
         return self._format(self.source, embed_link)
 
-    def format_title(self) -> str | None:
-        title = (self.title_romaji or self.title) if self.romaji_first else (self.title or self.title_romaji)
-        return title or None
+    def format_title(self) -> str:
+        title = (self.title_romaji or self.title) if self.romaji_first() else (self.title or self.title_romaji)
+        return title or ""
 
     def album_image(self):
-        if not self.album:
-            return None
-        if not self.album.image:
-            return None
-        return self.album.image.url
+        if self.album and self.album.image:
+            return self.album.image.url
+        return None
 
     def source_image(self):
-        if not self.source:
-            return None
-        if not self.source.image:
-            return None
-        return self.source.image.url
+        if self.source and self.source.image:
+            return self.source.image.url
+        return None
 
     id: SongID
     title: str | None
@@ -452,7 +450,7 @@ class Song(Base):
 
 
 @dataclass
-class SystemFeed(Base):
+class SystemFeed(ConfigurableBase):
     type: ActivityType
     created_at: datetime
     song: Song | None
@@ -488,7 +486,7 @@ class SystemFeed(Base):
 
 
 @dataclass
-class PlayStatistics(Base):
+class PlayStatistics(ConfigurableBase):
     created_at: datetime
     song: Song
     requester: Requester | None
@@ -519,8 +517,8 @@ class ListenWsData:
             _t=data["t"],
             start_time=datetime.fromisoformat(data["d"]["startTime"]),
             listener=data["d"]["listeners"],
-            requester=Requester.from_data(data["d"].get("requester")),
-            event=Event.from_data(data["d"].get("event")),
+            requester=Requester.from_data(data["d"]["requester"]) if data["d"].get("requester") else None,
+            event=Event.from_data(data["d"]["event"]) if data["d"].get("event") else None,
             song=Song.from_data(data["d"]["song"]),
             last_played=[Song.from_data(song) for song in data["d"]["lastPlayed"]],
         )
@@ -532,4 +530,4 @@ class ListenWsData:
     start_time: datetime
     last_played: list[Song]
     listener: int
-    event: Optional[Event] = None
+    event: Event | None = None

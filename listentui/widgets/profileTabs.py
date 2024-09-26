@@ -11,7 +11,9 @@ from textual.widgets import Label, ListItem, ListView
 
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ArtistID, Song, SystemFeed
-from listentui.screen.modal import AlbumScreen, ArtistScreen, SongScreen, SourceScreen
+from listentui.screen.modal import SpawnArtistScreen
+from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.utilities import format_time_since
 from listentui.widgets.pageSwitcher import PageSwitcher
 from listentui.widgets.songListView import AdvSongItem, SongListView
@@ -182,7 +184,7 @@ class ActivityTab(ProfileTab):
 
     @on(FeedView.ArtistSelected)
     async def artist_selected(self, event: FeedView.ArtistSelected) -> None:
-        self.app.push_screen(ArtistScreen(event.artis_id))
+        self.post_message(SpawnArtistScreen(event.artis_id))
 
     def action_refresh(self) -> None:
         self.populate_feeds()
@@ -231,15 +233,15 @@ class FavoritesTab(ProfileTab):
 
     @on(SongListView.ArtistSelected)
     async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.app.push_screen(ArtistScreen(event.artist.id))
+        self.post_message(SpawnArtistScreen(event.artist.id))
 
     @on(SongListView.SourceSelected)
     async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.app.push_screen(SourceScreen(event.source.id))
+        self.post_message(SpawnSourceScreen(event.source.id))
 
     @on(SongListView.AlbumSelected)
     async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.app.push_screen(AlbumScreen(event.album.id))
+        self.post_message(SpawnAlbumScreen(event.album.id))
 
 
 class UploadsTab(ProfileTab):
@@ -283,12 +285,12 @@ class UploadsTab(ProfileTab):
 
     @on(SongListView.ArtistSelected)
     async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.app.push_screen(ArtistScreen(event.artist.id))
+        self.post_message(SpawnArtistScreen(event.artist.id))
 
     @on(SongListView.SourceSelected)
     async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.app.push_screen(SourceScreen(event.source.id))
+        self.post_message(SpawnSourceScreen(event.source.id))
 
     @on(SongListView.AlbumSelected)
     async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.app.push_screen(AlbumScreen(event.album.id))
+        self.post_message(SpawnAlbumScreen(event.album.id))

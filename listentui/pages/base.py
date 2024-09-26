@@ -10,7 +10,7 @@ class BasePage(Widget, can_focus=True):
         self,
         id: str | None = None,  # noqa: A002
     ) -> None:
-        super().__init__(id=id)
+        super().__init__(id=id, classes="main_pages")
         self.config = Config.get_config()
         self._log = getLogger(__name__)
 

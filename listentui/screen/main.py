@@ -11,6 +11,7 @@ from listentui.pages.profile import ProfilePage
 from listentui.pages.search import SearchPage
 from listentui.pages.setting import SettingPage
 from listentui.utilities import RichLogExtended
+from listentui.widgets.floatingPlayer import ShowFloatingPlayer
 
 
 class MainScreen(Screen[None]):
@@ -50,6 +51,9 @@ class MainScreen(Screen[None]):
             await self.query_one("#topbar", TabbedContent).add_pane(
                 TabPane("Log", RichLogExtended(), id="log"), before="setting"
             )
+
+    def on_screen_suspend(self) -> None:
+        self.post_message(ShowFloatingPlayer())
 
     # @on(TabbedContent.TabActivated, "#topbar")
     # def on_tabbed_content_tab_activated(self, tab: TabbedContent.TabActivated) -> None:
