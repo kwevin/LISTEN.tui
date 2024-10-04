@@ -97,7 +97,7 @@ class HistoryPage(BasePage):
         self.table.add_column("Id")
         self.table.add_column("Track", width=30)
         self.table.add_column("Requested By")
-        self.table.add_column("Played At")
+        self.table.add_column("Played At", width=9)
         self.table.add_column("Artists", width=30)
         self.table.add_column("Album", width=30)
         self.table.add_column("Source", width=30)
@@ -137,11 +137,15 @@ class HistoryPage(BasePage):
         for history in self.history_result:
             sid = history.song.id
             song = history.song
+            if history.created_at.date() == now.date():
+                played_at = history.created_at.strftime("%H:%M:%S")
+            else:
+                played_at = history.created_at.strftime("%d-%m-%Y %H:%M:%S")
             rows: Sequence[str | Text] = [
                 Text(str(sid), style=f"{Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
                 de_kuten(song.format_title() or ""),
                 Text(de_kuten(history.requester.display_name), style=f"{Theme.ACCENT}") if history.requester else "",
-                history.created_at.strftime("%d-%m-%Y %H:%M:%S"),
+                played_at,
                 de_kuten(song.format_artists()),
                 de_kuten(song.format_album()),
                 de_kuten(song.format_source()),
@@ -171,6 +175,8 @@ class HistoryPage(BasePage):
             self.table.add_row("", "", "", "Load More", "", "", "")
             self.table.move_cursor(row=self.last_pos, column=0)
 
+        self.table.set_loading(False)
+
     def on_input_changed(self, event: Input.Changed) -> None:
         self.populate_table()
 
@@ -178,12 +184,14 @@ class HistoryPage(BasePage):
     async def on_select_changed(self, event: Select.Changed) -> None:
         if (datetime.now() - self.last_updated_time) > timedelta(minutes=10):
             self.last_pos = 0
+            self.table.set_loading(True)
             self.history_result = await self.client.history(offset=1)
         self.populate_table()
 
     @work
     async def action_refresh(self) -> None:
         self.last_pos = 0
+        self.table.set_loading(True)
         self.history_result = await self.client.history(offset=1)
 
     def on_data_table_cell_selected(self, cell: DataTable.CellSelected):
@@ -209,6 +217,7 @@ class HistoryPage(BasePage):
 
     @work
     async def load_additional(self, at: int = 0) -> None:
+        self.table.set_loading(True)
         self.history_result.extend(await self.client.history(50, len(self.history_result) + 1))
         self.last_pos = at
         self.history_result = self.history_result
@@ -268,6 +277,14 @@ class HistoryPage(BasePage):
 
     def get_song(self, rowkey: RowKey) -> Song:
         return self.table_lookup[rowkey].song
+
+    def action_dump(self):
+        with open("table_dump", "w+", encoding="utf-8") as f:
+            f.write(f"{[str(col.label) for col in self.table.columns.values()]},\n")
+            for row in self.table._data:
+                items = self.table.get_row(row)
+                stringify = [str(item) for item in items]
+                f.write(f"{stringify},\n")
 
     # @work
     # async def add_to_history(self, _) -> None:

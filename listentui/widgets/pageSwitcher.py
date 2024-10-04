@@ -164,14 +164,15 @@ class PageInputSelector(Widget):
         cursor_pos = self.app.mouse_position
         self.styles.offset = (cursor_pos.x, cursor_pos.y + 1)
 
-    def show(self, current: int, limit: int) -> None:
+    def show(self, page_switcher: PageSwitcher, current: int, limit: int) -> None:
+        self.page_switcher = page_switcher
         self.styles.display = "block"
         self.set_position()
-        self.current = current
-        self.input.value = f"{current}"
         self.max = limit
         self.query_one("#lim", Label).update(f"/{limit}")
         cast(Number, self.input.validators[0]).maximum = limit
+        self.current = current
+        self.input.value = f"{current}"
         self.input.focus()
 
     @on(events.DescendantBlur)
@@ -202,7 +203,7 @@ class PageSwitcher(Horizontal, can_focus=True):
         align-horizontal: center;
     }
     """
-    current_page: var[int] = var(1, init=False, always_update=True)
+    current_page: var[int] = var(1, init=False, always_update=False)
     _pages_to_render: reactive[list[Widget]] = reactive([], recompose=True)
 
     class PageChanged(Message):
@@ -213,11 +214,10 @@ class PageSwitcher(Horizontal, can_focus=True):
     def __init__(self, pages: int | None = None) -> None:
         super().__init__()
         self.end_page = pages or 0
-        self.can_render_all = False
 
     @classmethod
     def calculate(cls, amount_per_page: int, total: int) -> Self:
-        return cls(ceil(total / amount_per_page))
+        return cls(ceil(max(total / amount_per_page, 1)))
 
     def compose(self) -> ComposeResult:
         yield from self._pages_to_render
@@ -229,24 +229,28 @@ class PageSwitcher(Horizontal, can_focus=True):
             self.screen.mount(PageInputSelector(self, self.end_page))
 
     def on_resize(self, event: events.Resize) -> None:
+        if event.size.width:
+            self.create_from_width(event.size.width)
+
+    def create_from_width(self, width: int) -> None:
         self._pages_to_render.clear()
         min_size = 12
-        if event.size.width < min_size or self.end_page == 0:
+        if width < min_size:
             return
-        width = event.size.width - 12
+        if self.end_page == 1:
+            self._pages_to_render = self.create_pages(True)
+            return
+        width -= 12  # nav button
         if width - sum(self.size_of_page(page) for page in range(1, self.end_page + 1)) > 0:
-            self.can_render_all = True
+            self._pages_to_render = self.create_pages(True)
         else:
-            self.can_render_all = False
-        self._pages_to_render = self.create_pages()
+            self._pages_to_render = self.create_pages()
 
-    def create_pages(self) -> list[Widget]:
-        if self.end_page == 0:
-            return []
+    def create_pages(self, render_all: bool = False) -> list[Widget]:
         pages_to_render: list[Widget] = [
             self.create_prev_page(),
         ]
-        if self.can_render_all:
+        if render_all:
             pages_to_render.extend([self.create_page(page) for page in range(1, self.end_page + 1)])
             pages_to_render.append(self.create_next_page())
             return pages_to_render
@@ -295,7 +299,7 @@ class PageSwitcher(Horizontal, can_focus=True):
         return PageNavigationButton.next()
 
     def watch_current_page(self, new_page: int) -> None:
-        self._pages_to_render = self.create_pages()
+        self.create_from_width(self.size.width)
         self.post_message(self.PageChanged(new_page))
 
     def on_page_navigation_button_previous_selected(self, event: PageNavigationButton.PreviousSelected) -> None:
@@ -312,7 +316,7 @@ class PageSwitcher(Horizontal, can_focus=True):
 
     def on_page_navigation_button_input_selected(self, event: PageNavigationButton.InputSelected) -> None:
         event.stop()
-        self.screen.query_one(PageInputSelector).show(self.current_page, self.end_page)
+        self.screen.query_one(PageInputSelector).show(self, self.current_page, self.end_page)
 
     def set_page(self, page: int) -> None:
         self.current_page = page
@@ -323,10 +327,10 @@ class PageSwitcher(Horizontal, can_focus=True):
 
     def update(self, new_end_page: int) -> None:
         self.end_page = new_end_page
-        self._pages_to_render = self.create_pages()
+        self.create_from_width(self.size.width)
 
     def calculate_update_end_page(self, amount_per_page: int, total: int) -> None:
-        self.update(ceil(total / amount_per_page))
+        self.update(ceil(max(total / amount_per_page, 1)))
 
 
 if __name__ == "__main__":

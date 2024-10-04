@@ -1,26 +1,22 @@
+from datetime import datetime
+from logging import getLogger
+
+import pytz
 from rich.console import RenderableType
 from textual.app import ComposeResult
 from textual.containers import Horizontal
-from textual.reactive import reactive
+from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import ProgressBar, Static
 
+from listentui.data.config import Config
 from listentui.listen import Song
+from listentui.listen.interface import ListenWsData
 
 
-class _DurationCompleteLabel(Static):
+class _DurationLabel(Static):
     current = reactive(0, layout=True)
     total = reactive(0, layout=True)
-
-    def validate_current(self, value: int | float) -> int:
-        if isinstance(value, float):
-            return int(value)
-        return value
-
-    def validate_total(self, value: int | float) -> int:
-        if isinstance(value, float):
-            return int(value)
-        return value
 
     def render(self) -> RenderableType:
         m, s = divmod(self.current, 60)
@@ -51,11 +47,14 @@ class DurationProgressBar(Widget):
     DurationProgressBar ProgressBar Bar > .bar--bar {
         color: red;
     }
-    DurationProgressBar _DurationCompleteLabel {
+    DurationProgressBar _DurationLabel {
         width: auto;
         margin-left: 2;
     }
     """
+
+    current: var[int] = var(0)
+    total: var[int] = var(0)
 
     def __init__(self, current: int = 0, total: int = 0, stop: bool = False, pause_on_end: bool = False) -> None:
         super().__init__()
@@ -65,47 +64,52 @@ class DurationProgressBar(Widget):
         self.pause_on_end = pause_on_end
         self.time_end = 0
         self.progress_bar = ProgressBar(show_eta=False, show_percentage=False)
-        self.progress_label = _DurationCompleteLabel()
+        self.progress_label = _DurationLabel()
 
     def compose(self) -> ComposeResult:
         with Horizontal():
             yield self.progress_bar
-            yield self.progress_label
+            yield self.progress_label.data_bind(DurationProgressBar.current, DurationProgressBar.total)
 
     def on_mount(self) -> None:
-        self.progress_label.current = self.current
-        self.progress_label.total = self.total
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
     def _update_progress(self) -> None:
         if self.total != 0 and self.pause_on_end and self.current >= self.total:
             self.timer.pause()
             return
-        self.current += 1
         self.progress_bar.advance(1)
-        self.progress_label.current = self.current
+        self.current += 1
 
-    # def update_progress(self, data: ListenWsData):
-    #     # TODO: what in the blackmagic fuck
-    #     self.time_end = data.song.time_end
-    #     if data.song.duration:
-    #         self.current = (datetime.now(timezone.utc) - data.start_time).total_seconds()
-    #     else:
-    #         self.current = 0
-    #     self.total = data.song.duration or 0
-    #     self.query_one(ProgressBar).update(total=self.total if self.total != 0 else None, progress=self.current)
+    def try_calculate_duration(self, data: ListenWsData):
+        # the server clock is behind bruh
+        self.time_end = data.song.time_end
+        start = data.start_time
+        now = datetime.now(tz=pytz.utc)
+        current = round((now - start).total_seconds())
+        locdiff = Config.get_config().persistant.locdiff
+        getLogger(__name__).debug(
+            f"Attempting to calculate duration:\n\tcurrent_time = {now}\n\tstarted = {start}\n\tdiff = {round((now - start).total_seconds())}\n\tlocdiff = {locdiff}\n\tfinal_time = {current - locdiff}"  # noqa: E501
+        )
+        current -= locdiff
+        if data.song.duration and current > data.song.duration:
+            current = 0
+        if not data.song.duration:
+            current = 0
+        self.current = current
+        self.total = data.song.duration or 0
+        self.progress_label.total = self.total
+        self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
     def update_progress(self, song: Song) -> None:
         self.time_end = song.time_end
         self.current = 0
-        self.progress_label.current = self.current
         self.total = song.duration or 0
         self.progress_label.total = self.total
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
     def update_total(self, total: int) -> None:
         self.total = total
-        self.progress_label.total = total
         self.progress_bar.update(total=total, progress=self.current)
 
     def pause(self) -> None:
@@ -115,6 +119,6 @@ class DurationProgressBar(Widget):
         self.timer.resume()
 
     def reset(self) -> None:
-        self.current = 0
+        self.current = -1
         self.query_one(ProgressBar).update(total=self.total if self.total != 0 else None, progress=self.current)
-        self.query_one(_DurationCompleteLabel).total = self.total
+        self.query_one(_DurationLabel).total = self.total

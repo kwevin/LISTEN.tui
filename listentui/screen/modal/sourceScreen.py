@@ -5,21 +5,19 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, VerticalScroll
 from textual.lazy import Lazy
-from textual.screen import Screen
 from textual.widgets import Collapsible, Label, ListView, Markdown
 
 from listentui.listen import Album, AlbumID, ListenClient, Song, Source, SourceID
+from listentui.screen.modal.baseScreen import BaseScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnArtistScreen, SpawnSongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
-class SourceScreen(Screen[None]):
+class SourceScreen(BaseScreen[None]):
     DEFAULT_CSS = """
     SourceScreen {
         align: center middle;
-        background: $background;
-        hatch: left $background-lighten-1 60%;
     }
     SourceScreen #box {
         width: 100%;
@@ -112,10 +110,6 @@ class SourceScreen(Screen[None]):
     @on(SongListView.SongSelected)
     async def song_selected(self, event: SongListView.SongSelected) -> None:
         self.post_message(SpawnSongScreen(event.song.id))
-
-    @on(SongListView.ArtistSelected)
-    async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.post_message(SpawnArtistScreen(event.artist.id))
 
     @on(ListView.Highlighted)
     def child_highlighed(self, event: ListView.Highlighted) -> None:

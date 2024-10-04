@@ -1,14 +1,23 @@
+import os
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from listentui.utilities.logger import RichLogExtended, create_logger, get_logger
 
 __all__ = ["RichLogExtended", "create_logger", "format_time_since", "get_logger"]
 
 
+def get_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.argv[0]).parent.resolve()
+    return Path(__package__ or os.getcwd()).parent.resolve()
+
+
 def de_kuten(word: str) -> str:
     """Separates dakuten and handakuten"""
-    # return word
-    return word.replace("\u3099", "\u309b").replace("\u309a", "\u309c").replace("\u200b", "")
+    return word
+    # return word.replace("\u3099", "\u309b").replace("\u309a", "\u309c").replace("\u200b", "")
 
 
 def format_time_since(time: datetime, short_hand: bool = False) -> str:  # noqa: PLR0911

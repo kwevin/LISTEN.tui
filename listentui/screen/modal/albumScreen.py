@@ -5,21 +5,18 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, Grid, VerticalScroll
 from textual.lazy import Lazy
-from textual.screen import Screen
 from textual.widgets import Collapsible, Label, ListView
 
 from listentui.listen import Album, AlbumID, ListenClient
+from listentui.screen.modal.baseScreen import BaseScreen
 from listentui.screen.modal.buttons import ArtistButton, EscButton
-from listentui.screen.modal.messages import SpawnArtistScreen, SpawnSongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
-class AlbumScreen(Screen[None]):
+class AlbumScreen(BaseScreen[None]):
     DEFAULT_CSS = """
     AlbumScreen {
         align: center middle;
-        background: $background;
-        hatch: left $background-lighten-1 60%;
     }
     AlbumScreen #box {
         width: 100%;
@@ -54,8 +51,8 @@ class AlbumScreen(Screen[None]):
     }
     AlbumScreen Collapsible Grid {
         grid-size: 5;
-        grid-gutter: 1 2;
-        grid-rows: 5;
+        grid-gutter: 1 1;
+        grid-rows: 3;
         height: auto;
     }
     AlbumScreen CollapsibleTitle {
@@ -87,14 +84,6 @@ class AlbumScreen(Screen[None]):
                 if self.album.songs:
                     with VerticalScroll():
                         yield Lazy(SongListView(*[SongItem(song) for song in self.album.songs], initial_index=None))
-
-    @on(SongListView.SongSelected)
-    async def song_selected(self, event: SongListView.SongSelected) -> None:
-        self.post_message(SpawnSongScreen(event.song.id))
-
-    @on(SongListView.ArtistSelected)
-    async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.post_message(SpawnArtistScreen(event.artist.id))
 
     @on(ListView.Highlighted)
     def child_highlighed(self, event: ListView.Highlighted) -> None:

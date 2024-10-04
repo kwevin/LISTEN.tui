@@ -6,11 +6,11 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Container, Grid, Horizontal
-from textual.screen import Screen
 from textual.widgets import Label
 
 from listentui.data.theme import Theme
 from listentui.listen import ListenClient, RequestError, Song, SongID
+from listentui.screen.modal.baseScreen import BaseScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
 from listentui.utilities import format_time_since
@@ -21,15 +21,13 @@ from listentui.widgets.mpvThread import MPVThread, PreviewStatus, PreviewType
 from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
-class SongScreen(Screen[bool]):
+class SongScreen(BaseScreen[bool]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """
     SongScreen {
         align: center middle;
-        background: $background;
-        hatch: left $background-lighten-1 60%;
-    
+
         #artist {
             color: rgb(249, 38, 114);
         }
@@ -42,7 +40,7 @@ class SongScreen(Screen[bool]):
         grid-gutter: 1 2;
         grid-rows: 1 3 2 1fr;
         padding: 0 2;
-        width: 96;
+        width: 70%;
         height: 14;
         border: thick $background 80%;
         background: $surface;

@@ -8,6 +8,8 @@ from typing import Any, ClassVar, Protocol
 import tomli
 import tomli_w
 
+from listentui.utilities import get_root
+
 
 class InvalidConfigError(Exception):
     pass
@@ -38,7 +40,7 @@ class Presence(ConfigCatagory):
     fallback: str = "default"
     """Fallback to use when there is no image present ("default" for LISTEN.moe's icon)"""
     use_artist: bool = False
-    """Whether to use artist image as image when no album image is present"""
+    """Whether to use artist image as image when no album image is p    resent"""
     detail: str = "${title}"
     """Discord Rich Presence Title"""
     state: str = "${artist}"
@@ -105,6 +107,7 @@ class Advance(ConfigCatagory):
 class Persistant(ConfigCatagory):
     volume: int = 100
     token: str = ""
+    locdiff: int = 0
 
 
 # @dataclass
@@ -132,8 +135,10 @@ class Config:
 
     def __init__(self) -> None:
         self._log = getLogger(__name__)
-        self.config_root = self.get_config_root()
+        self.config_root = get_root()
         self.config_file = self.config_root.joinpath("config.toml")
+        if e := self.config_root.joinpath("config-dev.toml"):
+            self.config_file = e
         self.loading_errors: list[tuple[str, str, str]] = []
         """(catagory, key, error message)"""
         self._conf: dict[str, Any] = {}
@@ -154,24 +159,24 @@ class Config:
     def config_raw(self) -> dict[str, Any]:
         return {key: asdict(getattr(self, key)) for key, _ in self._config_loader}
 
-    def get_config_root(self) -> Path:
-        if getattr(sys, "frozen", False):
-            return Path(sys.argv[0]).parent.resolve()
-        return Path(__package__ or os.getcwd()).parent.resolve()
-        # if __portable__:
-        #     return Path(sys.argv[0]).parent.resolve()
+    # def get_config_root(self) -> Path:
+    #     if getattr(sys, "frozen", False):
+    #         return Path(sys.argv[0]).parent.resolve()
+    #     return Path(__package__ or os.getcwd()).parent.resolve()
+    # if __portable__:
+    #     return Path(sys.argv[0]).parent.resolve()
 
-        # if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
-        #     root = xdg_config_home().joinpath(PACKAGE_NAME).resolve()
-        #     if not root.is_dir():
-        #         root.mkdir(parents=True, exist_ok=True)
-        #     return root
-        # if sys.platform == "win32":
-        #     root = Path(environ["ROAMING"]).joinpath(PACKAGE_NAME).resolve()
-        #     if not root.is_dir():
-        #         root.mkdir(parents=True, exist_ok=True)
-        #     return root
-        # raise NotImplementedError(f"Not supported: {sys.platform}")
+    # if sys.platform.startswith(("linux", "darwin", "freebsd", "openbsd")):
+    #     root = xdg_config_home().joinpath(PACKAGE_NAME).resolve()
+    #     if not root.is_dir():
+    #         root.mkdir(parents=True, exist_ok=True)
+    #     return root
+    # if sys.platform == "win32":
+    #     root = Path(environ["ROAMING"]).joinpath(PACKAGE_NAME).resolve()
+    #     if not root.is_dir():
+    #         root.mkdir(parents=True, exist_ok=True)
+    #     return root
+    # raise NotImplementedError(f"Not supported: {sys.platform}")
 
     def _load_config(self) -> None:
         if not self.config_file.is_file():

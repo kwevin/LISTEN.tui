@@ -4,18 +4,17 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Grid
-from textual.screen import Screen
 from textual.widgets import Button, Label
 
+from listentui.screen.modal.baseScreen import BaseScreen
 
-class ConfirmScreen(Screen[bool]):
+
+class ConfirmScreen(BaseScreen[bool]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """
     ConfirmScreen {
         align: center middle;
-        background: $background;
-        hatch: left $background-lighten-1 60%;
     }
 
     ConfirmScreen #dialog {

@@ -11,7 +11,9 @@ from textual.widgets import Label, ListItem, ListView, Static
 
 from listentui.data.theme import Theme
 from listentui.listen import Song
-from listentui.listen.interface import Album, Artist, Source
+from listentui.listen.interface import Album, Artist, Character, Source
+from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
+from listentui.widgets.artistScrollableLabel import ArtistScrollableLabel
 from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
@@ -42,16 +44,12 @@ class SongItem(ListItem):
     def __init__(self, song: Song):
         self.song = song
         title = song.format_title()
-        artists = song.format_artists_list(show_character=False) or []
         super().__init__(
             ScrollableLabel(
                 Text.from_markup(f"{title}"),
                 classes="item-title",
             ),
-            ScrollableLabel(
-                *[Text.from_markup(f"[{Theme.ACCENT}]{artist}[/]") for artist in artists],
-                classes="item-artist",
-            ),
+            ArtistScrollableLabel(song),
         )
 
     class SongChildClicked(Message):
@@ -65,14 +63,6 @@ class SongItem(ListItem):
         def __init__(self, artist: Artist) -> None:
             super().__init__()
             self.artist = artist
-
-    @on(ScrollableLabel.Clicked, ".item-artist")
-    def scroll_label_clicked(self, event: ScrollableLabel.Clicked) -> None:
-        event.stop()
-        if self.song.artists is None:
-            return
-        artist = self.song.artists[event.index]
-        self.post_message(self.SongLabelClicked(artist))
 
     @on(ScrollableLabel.Clicked, ".item-title")
     def scroll_title_clicked(self, event: ScrollableLabel.Clicked) -> None:
@@ -145,7 +135,6 @@ class AdvSongItem(ListItem):
             super().__init__()
         self.song = song
         self.title = song.format_title()
-        self.artists = song.format_artists_list(show_character=False) or []
         self.source = song.format_source()
         self.album = song.format_album()
         self.set_class(favorited, "favorited")
@@ -156,10 +145,7 @@ class AdvSongItem(ListItem):
                 Text.from_markup(f"{self.title}"),
                 classes="item-title",
             )
-            yield ScrollableLabel(
-                *[Text.from_markup(f"[{Theme.ACCENT}]{artist}[/]") for artist in self.artists],
-                classes="item-artist",
-            )
+            yield ArtistScrollableLabel(self.song)
         elif self.album and not self.source:
             with Grid(id="alb-only"):
                 yield ScrollableLabel(
@@ -167,10 +153,7 @@ class AdvSongItem(ListItem):
                     classes="item-title",
                 )
                 yield Label("Album")
-                yield ScrollableLabel(
-                    *[Text.from_markup(f"[{Theme.ACCENT}]{artist}[/]") for artist in self.artists],
-                    classes="item-artist",
-                )
+                yield ArtistScrollableLabel(self.song)
                 yield (ScrollableLabel(Text.from_markup(f"[green]{self.album}[/]"), classes="item-album"))
         elif self.source and not self.album:
             with Grid(id="source-only"):
@@ -179,10 +162,7 @@ class AdvSongItem(ListItem):
                     classes="item-title",
                 )
                 yield Label("Source")
-                yield ScrollableLabel(
-                    *[Text.from_markup(f"[{Theme.ACCENT}]{artist}[/]") for artist in self.artists],
-                    classes="item-artist",
-                )
+                yield ArtistScrollableLabel(self.song)
                 yield (ScrollableLabel(Text.from_markup(f"[cyan]{self.source}[/]"), classes="item-source"))
         else:
             with Grid(id="alb-source"):
@@ -192,10 +172,7 @@ class AdvSongItem(ListItem):
                 )
                 yield Label("Album") if self.album else Static()
                 yield Label("Source") if self.source else Static()
-                yield ScrollableLabel(
-                    *[Text.from_markup(f"[{Theme.ACCENT}]{artist}[/]") for artist in self.artists],
-                    classes="item-artist",
-                )
+                yield ArtistScrollableLabel(self.song)
                 yield (
                     ScrollableLabel(Text.from_markup(f"[green]{self.album}[/]"), classes="item-album")
                     if self.album
@@ -214,29 +191,6 @@ class AdvSongItem(ListItem):
             super().__init__()
             self.item = item
 
-    class SongArtistClicked(Message):
-        def __init__(self, artist: Artist) -> None:
-            super().__init__()
-            self.artist = artist
-
-    class SongSourceClicked(Message):
-        def __init__(self, source: Source) -> None:
-            super().__init__()
-            self.source = source
-
-    class SongAlbumClicked(Message):
-        def __init__(self, album: Album) -> None:
-            super().__init__()
-            self.album = album
-
-    @on(ScrollableLabel.Clicked, ".item-artist")
-    def scroll_artist_clicked(self, event: ScrollableLabel.Clicked) -> None:
-        event.stop()
-        if self.song.artists is None:
-            return
-        artist = self.song.artists[event.index]
-        self.post_message(self.SongArtistClicked(artist))
-
     @on(ScrollableLabel.Clicked, ".item-title")
     def scroll_title_clicked(self, event: ScrollableLabel.Clicked) -> None:
         event.stop()
@@ -245,12 +199,12 @@ class AdvSongItem(ListItem):
     @on(ScrollableLabel.Clicked, ".item-source")
     def scroll_source_clicked(self, event: ScrollableLabel.Clicked) -> None:
         event.stop()
-        self.post_message(self.SongSourceClicked(cast(Source, self.song.source)))
+        self.post_message(SpawnSourceScreen(cast(Source, self.song.source).id))
 
     @on(ScrollableLabel.Clicked, ".item-album")
     def scroll_album_clicked(self, event: ScrollableLabel.Clicked) -> None:
         event.stop()
-        self.post_message(self.SongAlbumClicked(cast(Album, self.song.album)))
+        self.post_message(SpawnAlbumScreen(cast(Album, self.song.album).id))
 
     async def _on_click(self, _: events.Click) -> None:
         if any(label.mouse_hover for label in self.query(ScrollableLabel)):
@@ -277,42 +231,11 @@ class SongListView(ListView):
             super().__init__()
             self.song = song
 
-    class ArtistSelected(Message):
-        def __init__(self, artist: Artist) -> None:
-            super().__init__()
-            self.artist = artist
-
-    class SourceSelected(Message):
-        def __init__(self, source: Source) -> None:
-            super().__init__()
-            self.source = source
-
-    class AlbumSelected(Message):
-        def __init__(self, album: Album) -> None:
-            super().__init__()
-            self.album = album
-
     @on(AdvSongItem.SongChildClicked)
     @on(SongItem.SongChildClicked)
     def song_clicked(self, event: SongItem.SongChildClicked) -> None:
         event.stop()
         self.post_message(self.SongSelected(event.item.song))
-
-    @on(AdvSongItem.SongArtistClicked)
-    @on(SongItem.SongLabelClicked)
-    def song_label_clicked(self, event: SongItem.SongLabelClicked) -> None:
-        event.stop()
-        self.post_message(self.ArtistSelected(event.artist))
-
-    @on(AdvSongItem.SongSourceClicked)
-    def song_source_clicked(self, event: AdvSongItem.SongSourceClicked) -> None:
-        event.stop()
-        self.post_message(self.SourceSelected(event.source))
-
-    @on(AdvSongItem.SongAlbumClicked)
-    def song_album_clicked(self, event: AdvSongItem.SongAlbumClicked) -> None:
-        event.stop()
-        self.post_message(self.AlbumSelected(event.album))
 
     def action_select_cursor(self) -> None:
         selected_child: SongItem | None = cast(SongItem | None, self.highlighted_child)

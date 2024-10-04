@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -11,6 +12,7 @@ from logging import getLogger
 from string import Template
 from typing import Any, cast
 
+import pytz
 import websockets.client as websockets
 from pypresence import AioPresence, DiscordNotFound  # type: ignore
 from pypresence.exceptions import PipeClosed, ResponseTimeout
@@ -204,6 +206,7 @@ class Player(Widget):
         self._log = getLogger(__name__)
         self.ws_data: ListenWsData | None = None
         self.song: Song | None = None
+        self.is_first_song = True
         self.progress_bar = DurationProgressBar(stop=True, pause_on_end=True)
         self.player = MPVThread(self)
         self.retries = 0
@@ -232,7 +235,7 @@ class Player(Widget):
 
     async def on_mount(self) -> None:
         self.post_message(self.PlayerMounted(self))
-        self.loading = True
+        self.set_loading(True)
         self.websocket()
         self.player.start()
 
@@ -290,9 +293,17 @@ class Player(Widget):
         label.tooltip = f"Last: {status.last_heartbeat.strftime('%H:%M:%S')}"
 
     @on(WebsocketUpdated)
-    def update_websocket_time(self, _) -> None:
+    def update_websocket_time(self, event: WebsocketUpdated) -> None:
         self.websocket_time = time.time()
         self.update_delay()
+
+        # attemps to calculate the difference between localtime and server time (i believe their clock is behind)
+        if not self.is_first_song:
+            current_time = datetime.now(tz=pytz.utc)
+            server_time = event.data.start_time
+            diff = current_time - server_time
+            self._log.debug(f"local/server difference = {diff}")
+            Config.get_config().persistant.locdiff = round(diff.total_seconds())
 
     # @on(WebsocketUpdated)
     # def show_toast(self, event: WebsocketUpdated) -> None:
@@ -317,7 +328,7 @@ class Player(Widget):
 
         self.query_one(SongContainer).update_song(self.song)
         self.query_one(VanityBar).update_vanity(data)
-        self.loading = False
+        self.set_loading(False)
 
         if Config.get_config().presence.enable:
             self.update_presense(data, self.song)
@@ -347,7 +358,11 @@ class Player(Widget):
                         case 1:
                             self.ws_data = ListenWsData.from_data(res)
                             self.post_message(self.WebsocketUpdated(self.ws_data))
-                            self.progress_bar.update_progress(self.ws_data.song)
+                            if self.is_first_song:
+                                self.progress_bar.try_calculate_duration(self.ws_data)
+                                self.is_first_song = False
+                            else:
+                                self.progress_bar.update_progress(self.ws_data.song)
                             self.update_container(self.ws_data)
                         case 0:
                             self.post_message(self.WebsocketStatus(True, last_heartbeat))
@@ -486,9 +501,10 @@ class Player(Widget):
             self.query_one("#rpc", Label).update("[red]RPC[/]")
             self._log.exception("Something went wrong with updating discord presense")
 
-    async def on_unmount(self) -> None:
-        if self.presense_connected:
-            await self.presence.clear()
+    # async def on_unmount(self) -> None:
+    #     if self.presense_connected:
+    #         with contextlib.suppress(Exception):
+    #             await self.presence.clear()
 
     def on_hide(self) -> None:
         self.on_display = False

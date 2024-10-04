@@ -231,18 +231,6 @@ class FavoritesTab(ProfileTab):
         if favorited_status is not True:
             self.query_exactly_one(SongListView).remove_children(f"#_song-{event.song.id}")
 
-    @on(SongListView.ArtistSelected)
-    async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.post_message(SpawnArtistScreen(event.artist.id))
-
-    @on(SongListView.SourceSelected)
-    async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.post_message(SpawnSourceScreen(event.source.id))
-
-    @on(SongListView.AlbumSelected)
-    async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.post_message(SpawnAlbumScreen(event.album.id))
-
 
 class UploadsTab(ProfileTab):
     def __init__(self) -> None:
@@ -282,15 +270,3 @@ class UploadsTab(ProfileTab):
         favorited_status = await self.app.push_screen_wait(SongScreen(event.song.id, True))
         if favorited_status is not True:
             self.query_exactly_one(SongListView).remove_children(f"#_song-{event.song.id}")
-
-    @on(SongListView.ArtistSelected)
-    async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.post_message(SpawnArtistScreen(event.artist.id))
-
-    @on(SongListView.SourceSelected)
-    async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.post_message(SpawnSourceScreen(event.source.id))
-
-    @on(SongListView.AlbumSelected)
-    async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.post_message(SpawnAlbumScreen(event.album.id))

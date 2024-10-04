@@ -4,20 +4,18 @@ from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, Grid
-from textual.screen import Screen
 from textual.widgets import Button, Label
 
+from listentui.screen.modal.baseScreen import BaseScreen
 from listentui.screen.modal.buttons import OptionButton
 
 
-class SelectionScreen(Screen[int | None]):
+class SelectionScreen(BaseScreen[int | None]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """
     SelectionScreen {
         align: center middle;
-        background: $background;
-        hatch: left $background-lighten-1 60%;
     }
     SelectionScreen Container {
         width: auto;

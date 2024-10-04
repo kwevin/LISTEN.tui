@@ -78,7 +78,7 @@ class SearchPage(BasePage):
             yield self.amount_selection
             yield self.filter
         yield Center(Label("50 Results Found", id="counter"))
-        with ScrollableContainer():
+        with ScrollableContainer(id="list_view_main"):
             yield self.list_view
             yield PageSwitcher()
 
@@ -126,11 +126,16 @@ class SearchPage(BasePage):
         else:
             self.notify("All requests have been used up for today!", severity="warning")
 
+    def watch_search_result(self, new_value: dict[SongID, Song]) -> None:
+        self.enable_loading()
+        self.update_list_view(new_value)
+
     @work
-    async def watch_search_result(self, new_value: dict[SongID, Song]) -> None:
+    async def update_list_view(self, new_value: dict[SongID, Song]) -> None:
         self.favorited = {}
-        if self.client.logged_in and not self.is_filter_selected():
+        if self.client.logged_in and not self.is_filter_selected() and len(new_value.keys()) != 0:
             self.favorited = await self.client.check_favorite([*new_value.keys()])
+
         self.populate_list_view(1)
         self.query_one("#counter", Label).update(
             f"{len(new_value.keys())} Results Found" if len(new_value.keys()) > 0 else "No Result Found"
@@ -139,10 +144,8 @@ class SearchPage(BasePage):
         self.search_result_copy = [*new_value.keys()]
 
     @work
-    async def populate_list_view(self, page: int, loading: bool = True) -> None:
-        container = self.query_one(ScrollableContainer)
-        if loading:
-            container.loading = True
+    async def populate_list_view(self, page: int) -> None:
+        # self.enable_loading()
         await self.list_view.clear()
         if self.search_result.keys():
             await self.list_view.extend(
@@ -153,8 +156,7 @@ class SearchPage(BasePage):
                     )
                 ]
             )
-        container.scroll_home()
-        container.loading = False
+        self.remove_loading()
 
     @work
     async def on_mount(self) -> None:
@@ -185,7 +187,7 @@ class SearchPage(BasePage):
 
     @on(PageSwitcher.PageChanged)
     def on_page_changed(self, event: PageSwitcher.PageChanged) -> None:
-        self.populate_list_view(event.page, loading=False)
+        self.populate_list_view(event.page)
 
     @work
     async def search(self, valid: bool = False) -> None:
@@ -195,6 +197,7 @@ class SearchPage(BasePage):
         if valid:
             if pager.current_page != 1:
                 pager.reset()
+            self.enable_loading()
             self.search_result = self.to_dict(await self.client.search(search, favorite_only=self.is_filter_selected()))
             return
 
@@ -202,6 +205,7 @@ class SearchPage(BasePage):
         if validation and validation.is_valid:
             if pager.current_page != 1:
                 pager.reset()
+            self.enable_loading()
             self.search_result = self.to_dict(await self.client.search(search, favorite_only=self.is_filter_selected()))
 
     @on(SongListView.SongSelected)
@@ -213,20 +217,14 @@ class SearchPage(BasePage):
         )
         self.query_one(f"#_song-{event.song.id}", AdvSongItem).set_favorited_state(favorited_status)
 
-    @on(SongListView.ArtistSelected)
-    async def artist_selected(self, event: SongListView.ArtistSelected) -> None:
-        self.post_message(SpawnArtistScreen(event.artist.id))
-
-    @on(SongListView.SourceSelected)
-    async def source_selected(self, event: SongListView.SourceSelected) -> None:
-        self.post_message(SpawnSourceScreen(event.source.id))
-
-    @on(SongListView.AlbumSelected)
-    async def album_selected(self, event: SongListView.AlbumSelected) -> None:
-        self.post_message(SpawnAlbumScreen(event.album.id))
-
     def to_dict(self, songs: list[Song]) -> dict[SongID, Song]:
         return {song.id: song for song in songs}
 
     def is_filter_selected(self) -> bool:
         return len(self.filter.selected) == 1
+
+    def enable_loading(self) -> None:
+        self.query_one("#list_view_main").set_loading(True)
+
+    def remove_loading(self) -> None:
+        self.query_one("#list_view_main").set_loading(False)

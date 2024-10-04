@@ -9,3 +9,5 @@ dist
 build
 _legacy
 todo.md
+config-dev.toml
+table_dump
