@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from os import environ
 from typing import Any, Literal, Optional
 
-import mpv  # type: ignore
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -286,8 +286,10 @@ class MPVOptions(Generic):
 
     @work(group="setting-mpv", thread=True)
     def test_mpv(self, options: dict[str, Any]) -> bool:
+        import mpv  # noqa: PLC0415
+
         try:
-            mpv.MPV(**options).terminate()
+            mpv.MPV(**options).terminate()  # type: ignore
             return True
         except AttributeError as e:
             # AttributeError("Exception Message", -5, (<mpvHandleObject at>, b'illegal flag', b'no'))

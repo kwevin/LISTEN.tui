@@ -1,8 +1,10 @@
+import asyncio
+import signal
+import sys
 from contextlib import suppress
 
 from textual import on, work
 from textual.app import App
-from textual.css.query import NoMatches
 
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
@@ -12,8 +14,8 @@ from listentui.screen.login import LoginScreen
 from listentui.screen.main import MainScreen
 from listentui.screen.modal import AlbumScreen, ArtistScreen, SongScreen, SourceScreen
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSongScreen, SpawnSourceScreen
+from listentui.screen.mpvWarning import MPVWarningScreen
 from listentui.utilities.logger import create_logger
-from listentui.widgets.floatingPlayer import FloatingPlayer, HideFloatingPlayer, ShowFloatingPlayer
 from listentui.widgets.player import MPVThread, Player
 
 
@@ -25,10 +27,14 @@ class ListentuiApp(App[str]):
         self.player: Player | None = None
 
     def on_load(self) -> None:
-        create_logger(Config.get_config().advance.stats_for_nerd)
+        create_logger(Config.get_config().advance.stats_for_nerd, self.app.console)
 
     @work
     async def on_mount(self) -> None:
+        self.login_and_load()
+
+    @work
+    async def login_and_load(self) -> None:
         status = await self.push_screen_wait(LoginScreen())
         if not status:
             self.exit(return_code=1, message="Login failed, please check your username and password")
@@ -40,7 +46,7 @@ class ListentuiApp(App[str]):
 
     async def on_unmount(self) -> None:
         Config.get_config().save()
-        await self.terminate_components()
+        await asyncio.wait_for(self.terminate_components(), timeout=20)
 
     def action_handle_url(self, url: str) -> None:
         self.open_url(url, new_tab=True)
@@ -50,13 +56,15 @@ class ListentuiApp(App[str]):
             MPVThread.instance.terminate()
         with suppress(AttributeError):
             await ListenClient.get_instance().close()
+        if self.player and self.player.presense_connected:
+            await self.player.presence.clear()
 
     async def restart(self) -> None:
         self.player = None
         await self.screen.remove()
         await self.terminate_components()
         # await self.recompose()
-        self.on_mount()
+        self.login_and_load()
 
     @on(SettingPage.RequestRestart)
     async def apply_setting(self, event: SettingPage.RequestRestart) -> None:
@@ -144,7 +152,12 @@ class ListentuiApp(App[str]):
 
 
 def run() -> None:
-    output = ListentuiApp().run()
+    def sigterm_handler(signum, stack) -> None:
+        app.exit(message="Terminated by SIGTERM")
+
+    app = ListentuiApp()
+    signal.signal(signal.SIGTERM, sigterm_handler)
+    output = app.run()
     if output is not None:
         print(output)
 

@@ -97,7 +97,7 @@ class HistoryPage(BasePage):
         self.table.add_column("Id")
         self.table.add_column("Track", width=30)
         self.table.add_column("Requested By")
-        self.table.add_column("Played At", width=9)
+        self.table.add_column("Played At")
         self.table.add_column("Artists", width=30)
         self.table.add_column("Album", width=30)
         self.table.add_column("Source", width=30)

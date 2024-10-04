@@ -27,6 +27,7 @@ from textual.widget import Widget
 from textual.widgets import Label
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
+from listentui import __NO_MPV__
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ListenWsData, Song
@@ -237,7 +238,8 @@ class Player(Widget):
         self.post_message(self.PlayerMounted(self))
         self.set_loading(True)
         self.websocket()
-        self.player.start()
+        if not __NO_MPV__:
+            self.player.start()
 
         if Config.get_config().presence.enable:
             await self.connect_presense()
