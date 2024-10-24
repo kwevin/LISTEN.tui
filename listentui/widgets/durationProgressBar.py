@@ -58,7 +58,7 @@ class DurationProgressBar(Widget):
 
     def __init__(self, current: int = 0, total: int = 0, stop: bool = False, pause_on_end: bool = False) -> None:
         super().__init__()
-        self.timer = self.set_interval(1, self._update_progress, pause=stop)
+        self.timer = self.set_interval(1, self._tick, pause=stop)
         self.current = current
         self.total = total
         self.pause_on_end = pause_on_end
@@ -74,12 +74,12 @@ class DurationProgressBar(Widget):
     def on_mount(self) -> None:
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
-    def _update_progress(self) -> None:
+    def _tick(self) -> None:
         if self.total != 0 and self.pause_on_end and self.current >= self.total:
             self.timer.pause()
             return
-        self.progress_bar.advance(1)
         self.current += 1
+        self.progress_bar.advance(1)
 
     def try_calculate_duration(self, data: ListenWsData):
         # the server clock is behind bruh
@@ -89,7 +89,7 @@ class DurationProgressBar(Widget):
         current = round((now - start).total_seconds())
         locdiff = Config.get_config().persistant.locdiff
         getLogger(__name__).debug(
-            f"Attempting to calculate duration:\n\tcurrent_time = {now}\n\tstarted = {start}\n\tdiff = {round((now - start).total_seconds())}\n\tlocdiff = {locdiff}\n\tfinal_time = {current - locdiff}"  # noqa: E501
+            f"Attempting to calculate duration:\n\tcurrent_time = {now}\n\tstarted = {start}\n\tdiff = {current}\n\tlocdiff = {locdiff}\n\tfinal_time = {current - locdiff}"  # noqa: E501
         )
         current -= locdiff
         if data.song.duration and current > data.song.duration:
@@ -119,6 +119,7 @@ class DurationProgressBar(Widget):
         self.timer.resume()
 
     def reset(self) -> None:
-        self.current = -1
+        self.current = 0
+        self.timer.reset()
         self.query_one(ProgressBar).update(total=self.total if self.total != 0 else None, progress=self.current)
         self.query_one(_DurationLabel).total = self.total

@@ -9,9 +9,8 @@ from textual.containers import Grid
 from textual.message import Message
 from textual.widgets import Label, ListItem, ListView, Static
 
-from listentui.data.theme import Theme
 from listentui.listen import Song
-from listentui.listen.interface import Album, Artist, Character, Source
+from listentui.listen.interface import Album, Artist, Source
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
 from listentui.widgets.artistScrollableLabel import ArtistScrollableLabel
 from listentui.widgets.scrollableLabel import ScrollableLabel
@@ -124,6 +123,10 @@ class AdvSongItem(ListItem):
 
     AdvSongItem.favorited {
         border-left: inner red;
+    }
+
+    AdvSongItem Label {
+        color: grey;
     }
 
     """

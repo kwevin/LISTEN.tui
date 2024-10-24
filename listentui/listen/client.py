@@ -606,6 +606,13 @@ class ListenClient:
             return []
         return [Song.from_data(song) for song in songs]
 
+    async def total_songs_count(self) -> int:
+        """return a list of songs from the api"""
+        query = self._queries.songs
+        params = {"offset": 0, "count": 1}
+        res = await self._execute(document=query, variable_values=params)
+        return res["songs"].get("count", 0)
+
     async def source(self, source_id: Union[SourceID, int]) -> Source | None:
         """return a source from the api"""
         query = self._queries.source

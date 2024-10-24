@@ -101,6 +101,8 @@ class Downloader(ConfigCatagory):
 class Advance(ConfigCatagory):
     stats_for_nerd: bool = False
     """Enable verbose logging and more"""
+    save_durations: bool = False
+    """Save duration for songs with no reported duration"""
 
 
 @dataclass

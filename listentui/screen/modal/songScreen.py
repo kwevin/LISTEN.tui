@@ -1,3 +1,4 @@
+from logging import getLogger
 from threading import Thread
 from typing import ClassVar, cast
 
@@ -175,30 +176,28 @@ class SongScreen(BaseScreen[bool]):
             self.notify("No snippet to preview", severity="warning", title="Preview")
             return
         self.query_one("#preview", StaticButton).disabled = True
+        self.query_one("#preview", StaticButton).set_loading(True)
         MPVThread.preview(song.snippet, self.handle_preview_status)
 
-    def handle_preview_status(self, data: PreviewStatus):  # noqa: PLR0911
+    def handle_preview_status(self, data: PreviewStatus):
         try:
             progress = self.query_one(DurationProgressBar)
             if data.state == PreviewType.LOCKED:
                 self.notify("Cannot preview two songs at the same time", title="Preview", severity="warning")
-                return
-            if data.state == PreviewType.UNABLE:
+            elif data.state == PreviewType.UNABLE:
                 self.notify("Unable to play preview :(", title="Preview", severity="warning")
-                return
-            if data.state == PreviewType.PLAYING:
+            elif data.state == PreviewType.PLAYING:
+                self.query_one("#preview", StaticButton).set_loading(False)
                 progress.reset()
                 progress.resume()
-                return
-            if data.state == PreviewType.DATA:
+            elif data.state == PreviewType.DATA:
                 cache = cast(MPVThread.DemuxerCacheState, data.other)
                 progress.update_total(round(cache.cache_end))
-                return
-            if data.state == PreviewType.DONE:
+            elif data.state == PreviewType.DONE:
                 self.query_one("#preview", StaticButton).disabled = False
-                return
-            if data.state == PreviewType.ERROR:
+            elif data.state == PreviewType.ERROR:
                 self.notify("An error has occured", title="Preview", severity="warning")
+            else:
                 return
         except Exception:
             return

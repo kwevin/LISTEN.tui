@@ -12,8 +12,11 @@ from listentui.listen.interface import ConfigurableBase
 from listentui.pages.setting import SettingPage
 from listentui.screen.login import LoginScreen
 from listentui.screen.main import MainScreen
-from listentui.screen.modal import AlbumScreen, ArtistScreen, SongScreen, SourceScreen
+from listentui.screen.modal.albumScreen import AlbumScreen
+from listentui.screen.modal.artistScreen import ArtistScreen
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSongScreen, SpawnSourceScreen
+from listentui.screen.modal.songScreen import SongScreen
+from listentui.screen.modal.sourceScreen import SourceScreen
 from listentui.screen.mpvWarning import MPVWarningScreen
 from listentui.utilities.logger import create_logger
 from listentui.widgets.player import MPVThread, Player
@@ -41,7 +44,6 @@ class ListentuiApp(App[str]):
             return
         # configure the client interface
         ConfigurableBase.prefer_romaji_first = Config.get_config().display.romaji_first
-
         self.push_screen(MainScreen())
 
     async def on_unmount(self) -> None:

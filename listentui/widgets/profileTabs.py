@@ -11,8 +11,7 @@ from textual.widgets import Label, ListItem, ListView
 
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ArtistID, Song, SystemFeed
-from listentui.screen.modal import SpawnArtistScreen
-from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
+from listentui.screen.modal.messages import SpawnArtistScreen
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.utilities import format_time_since
 from listentui.widgets.pageSwitcher import PageSwitcher

@@ -12,7 +12,7 @@ from textual.message import Message
 from textual.reactive import var
 from textual.validation import Function, Validator
 from textual.widget import Widget
-from textual.widgets import Collapsible, Input, Label, Static, Switch, TextArea
+from textual.widgets import Collapsible, Input, Label, ProgressBar, Static, Switch, TextArea
 
 from listentui.data.config import Config
 from listentui.listen import ListenClient
@@ -44,6 +44,16 @@ DOC: dict[str, str] = {
     "player.mpv_options": "MPV options to pass to mpv (see https://mpv.io/manual/master/#options)",
     "advance.stats_for_nerd": "Enable verbose logging and more",
 }
+
+
+class DisableApply(Message):
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class EnableApply(Message):
+    def __init__(self) -> None:
+        super().__init__()
 
 
 @dataclass
@@ -110,8 +120,11 @@ class GenericSwitch(Generic):
     def on_switch_changed(self, event: Switch.Changed) -> None:
         self.setting.value = event.value
         self.setting.set_dirty()
-        # config = Config.get_config()
-        # setattr(getattr(config, self.setting.catagory), self.setting.option, event.value)
+
+    def switch(self, value: bool | None = None) -> None:
+        switch = self.query_one(Switch)
+        with self.prevent(Switch.Changed):
+            switch.value = value or not switch.value
 
 
 class GenericField(Generic):
@@ -167,8 +180,6 @@ class GenericField(Generic):
             return
         self.setting.value = int(event.value) if self.is_int else event.value
         self.setting.set_dirty()
-        # config = Config.get_config()
-        # setattr(getattr(config, self.setting.catagory), self.setting.option, self.setting.value)
 
 
 class Login(Generic):
@@ -393,13 +404,16 @@ class SettingPage(BasePage):
         super().__init__()
         self.config = Config.get_config().config_raw
         self.override: dict[str, Widget] = {
-            "client.password": Login(Setting("client", "password", self.config["client"]["password"])),
-            "player.mpv_options": MPVOptions(Setting("player", "mpv_options", self.config["player"]["mpv_options"])),
+            "client.password": Login(self.create_setting("client", "password")),
+            "player.mpv_options": MPVOptions(self.create_setting("player", "mpv_options")),
             "presence.default_placeholder": GenericField(
-                Setting("presence", "default_placeholder", self.config["presence"]["default_placeholder"]),
+                self.create_setting("presence", "default_placeholder"),
                 validator=Function(lambda x: len(x) >= 2, failure_description="must be >= 2 characters"),  # noqa: PLR2004
             ),
         }
+
+    def create_setting(self, catagory: str, option: str) -> Setting:
+        return Setting(catagory, option, self.config[catagory][option])
 
     def compose(self) -> ComposeResult:
         yield Label("• For more information, hover over the label", id="setting-info")
@@ -444,3 +458,11 @@ class SettingPage(BasePage):
                 items.add(widget.setting.catagory)
         config.save()
         self.post_message(self.RequestRestart(items))
+
+    @on(DisableApply)
+    def disable_apply(self) -> None:
+        self.query_one("#apply").disabled = True
+
+    @on(EnableApply)
+    def enable_apply(self) -> None:
+        self.query_one("#apply").disabled = False
