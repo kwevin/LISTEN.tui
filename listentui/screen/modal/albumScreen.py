@@ -1,19 +1,19 @@
-from typing import ClassVar
+from typing import ClassVar, Self
 
 from textual import on, work
-from textual.app import ComposeResult
+from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, Grid, VerticalScroll
 from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView
 
 from listentui.listen import Album, AlbumID, ListenClient
-from listentui.screen.modal.baseScreen import BaseScreen
+from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import ArtistButton, EscButton
 from listentui.widgets.songListView import SongItem, SongListView
 
 
-class AlbumScreen(BaseScreen[None]):
+class AlbumScreen(BaseScreen[None, AlbumID, Album]):
     DEFAULT_CSS = """
     AlbumScreen {
         align: center middle;
@@ -64,16 +64,14 @@ class AlbumScreen(BaseScreen[None]):
         ("escape", "cancel"),
     ]
 
-    def __init__(self, album_id: AlbumID, album: Album | None = None):
+    def __init__(self, album_id: AlbumID, album: Album):
         super().__init__()
         self.album_id = album_id
-        self.album: Album | None = None
+        self.album = album
 
     def compose(self) -> ComposeResult:
         yield EscButton()
         with Container(id="box"):
-            if self.album is None:
-                return
             yield Center(Label(id="name"))
             yield Label(id="links")
             with VerticalScroll():
@@ -90,21 +88,19 @@ class AlbumScreen(BaseScreen[None]):
         if event.item:
             self.scroll_to_widget(event.item, center=True)
 
-    @work
-    async def on_mount(self) -> None:
-        if not self.album:
-            self.query_one("#box", Container).loading = True
-            self.album = await ListenClient.get_instance().album(self.album_id)
-            if self.album is None:
-                raise Exception("album cannot be None")
+    @classmethod
+    async def load(cls, app: App, load_id: AlbumID) -> Self:
+        client = ListenClient.get_instance()
+        res = await app.push_screen_wait(LoadingScreen(client.album(load_id)))
+        assert res is not None
+        return cls(load_id, res)
 
-            await self.recompose()
+    def on_mount(self) -> None:
         count = len(self.album.songs) if self.album.songs else 0
         self.query_one("#name", Label).update(f"{self.album.format_name()} - {count} Songs")
         self.query_one("#links", Label).update(
             f"{self.album.format_socials(sep=' ') or '- No links for this album yet -'}"
         )
-        self.query_one("#box", Container).loading = False
 
     def action_cancel(self) -> None:
         self.dismiss()

@@ -240,7 +240,7 @@ class SearchPage(BasePage):
     async def song_selected(self, event: SongListView.SongSelected) -> None:
         filtr = self.is_filter_selected()
         favorited_status = await self.app.push_screen_wait(
-            SongScreen(event.song.id, self.favorited.get(event.song.id, filtr))
+            await SongScreen.load_with_favorited(self.app, event.song.id, self.favorited.get(event.song.id, filtr))
         )
         self.query_one(f"#_song-{event.song.id}", AdvSongItem).set_favorited_state(favorited_status)
 

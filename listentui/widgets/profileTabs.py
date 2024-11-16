@@ -177,7 +177,7 @@ class ActivityTab(ProfileTab):
         song_id = event.song.id
         favorited = event.feed.type == SystemFeed.ActivityType.FAVORITED
 
-        res = await self.app.push_screen_wait(SongScreen(song_id, favorited))
+        res = await self.app.push_screen_wait(await SongScreen.load_with_favorited(self.app, song_id, favorited))
 
         if res != favorited:
             self.action_refresh()
@@ -227,7 +227,9 @@ class FavoritesTab(ProfileTab):
     @on(SongListView.SongSelected)
     @work
     async def song_selected(self, event: SongListView.SongSelected) -> None:
-        favorited_status = await self.app.push_screen_wait(SongScreen(event.song.id, True))
+        favorited_status = await self.app.push_screen_wait(
+            await SongScreen.load_with_favorited(self.app, event.song.id, True)
+        )
         if favorited_status is not True:
             self.query_exactly_one(SongListView).remove_children(f"#_song-{event.song.id}")
 
@@ -267,6 +269,8 @@ class UploadsTab(ProfileTab):
     @on(SongListView.SongSelected)
     @work
     async def song_selected(self, event: SongListView.SongSelected) -> None:
-        favorited_status = await self.app.push_screen_wait(SongScreen(event.song.id, True))
+        favorited_status = await self.app.push_screen_wait(
+            await SongScreen.load_with_favorited(self.app, event.song.id, True)
+        )
         if favorited_status is not True:
             self.query_exactly_one(SongListView).remove_children(f"#_song-{event.song.id}")

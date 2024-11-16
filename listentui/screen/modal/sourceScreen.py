@@ -1,20 +1,20 @@
-from typing import ClassVar
+from typing import ClassVar, Self
 
 from textual import on, work
-from textual.app import ComposeResult
+from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, VerticalScroll
 from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView, Markdown
 
 from listentui.listen import Album, AlbumID, ListenClient, Song, Source, SourceID
-from listentui.screen.modal.baseScreen import BaseScreen
+from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnArtistScreen, SpawnSongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
-class SourceScreen(BaseScreen[None]):
+class SourceScreen(BaseScreen[None, SourceID, Source]):
     DEFAULT_CSS = """
     SourceScreen {
         align: center middle;
@@ -51,16 +51,14 @@ class SourceScreen(BaseScreen[None]):
         ("escape", "cancel"),
     ]
 
-    def __init__(self, source_id: SourceID):
+    def __init__(self, source_id: SourceID, source: Source):
         super().__init__()
         self.source_id = source_id
-        self.source: Source | None = None
+        self.source = source
 
     def compose(self) -> ComposeResult:
         yield EscButton()
         with Container(id="box"):
-            if self.source is None:
-                return
             yield Center(Label(id="name"))
             yield (
                 Collapsible(Markdown(self.source.description), title="Description")
@@ -116,18 +114,19 @@ class SourceScreen(BaseScreen[None]):
         if event.item:
             self.scroll_to_widget(event.item, center=True)
 
-    @work
-    async def on_mount(self) -> None:
-        self.query_one("#box", Container).loading = True
-        self.source = await ListenClient.get_instance().source(self.source_id)
-        if self.source is None:
-            raise Exception("source cannot be None")
-        await self.recompose()
+    def on_mount(self) -> None:
         self.query_one("#box", Container).loading = False
         self.query_one("#name", Label).update(self.source.format_name())
         self.query_one("#links", Label).update(
             f"{self.source.format_socials(sep=' ') or '- No links for this source yet - '}"
         )
+
+    @classmethod
+    async def load(cls, app: App, load_id: SourceID) -> Self:
+        client = ListenClient.get_instance()
+        res = await app.push_screen_wait(LoadingScreen(client.source(load_id)))
+        assert res is not None
+        return cls(load_id, res)
 
     def action_cancel(self) -> None:
         self.dismiss()

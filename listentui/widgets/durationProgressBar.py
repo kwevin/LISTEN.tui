@@ -106,6 +106,8 @@ class DurationProgressBar(Widget):
         self.progress_label.total = self.total
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
+        self.set_debug_missing(data.song)
+
     def update_progress(self, song: Song) -> None:
         self.time_end = song.time_end
         self.current = 0
@@ -113,6 +115,9 @@ class DurationProgressBar(Widget):
         self.progress_label.total = self.total
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
 
+        self.set_debug_missing(song)
+
+    def set_debug_missing(self, song):
         if get_song_duration(song.id) is not None and Config.get_config().advance.stats_for_nerd:
             self.query_one(_DurationLabel).add_class("debug_missing")
         else:

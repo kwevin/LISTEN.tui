@@ -246,7 +246,7 @@ class HistoryPage(BasePage):
     async def show_song(self, rowkey: RowKey, coordinate: Coordinate) -> None:
         song = self.get_song(rowkey)
         current = self.favorited[song.id]
-        res = await self.app.push_screen_wait(SongScreen(song.id, current))
+        res = await self.app.push_screen_wait(await SongScreen.load_with_favorited(self.app, song.id, current))
 
         if res is not current:
             self.favorited[song.id] = res

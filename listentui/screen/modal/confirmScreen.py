@@ -9,7 +9,7 @@ from textual.widgets import Button, Label
 from listentui.screen.modal.baseScreen import BaseScreen
 
 
-class ConfirmScreen(BaseScreen[bool]):
+class ConfirmScreen(BaseScreen[bool, None, None]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """

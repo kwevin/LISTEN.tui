@@ -221,6 +221,13 @@ def _build_queries():
         query character($$id: Int!) {
             character(id: $$id) {
                 ${generic}
+                albums {
+                    ${generic}
+                    image
+                    songs {
+                        ${song}
+                    }
+                }
             }
         }
     """

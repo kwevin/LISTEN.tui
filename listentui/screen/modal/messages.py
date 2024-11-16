@@ -1,6 +1,6 @@
 from textual.message import Message
 
-from listentui.listen.interface import AlbumID, ArtistID, SongID, SourceID
+from listentui.listen.interface import AlbumID, ArtistID, CharacterID, SongID, SourceID
 
 
 class SpawnAlbumScreen(Message):
@@ -37,3 +37,9 @@ class SpawnSourceScreen(Message):
     def __init__(self, source_id: SourceID) -> None:
         super().__init__()
         self.source_id = source_id
+
+
+class SpawnCharacterScreen(Message):
+    def __init__(self, character_id: CharacterID) -> None:
+        super().__init__()
+        self.character_id = character_id

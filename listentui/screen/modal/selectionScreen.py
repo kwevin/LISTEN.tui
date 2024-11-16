@@ -10,7 +10,7 @@ from listentui.screen.modal.baseScreen import BaseScreen
 from listentui.screen.modal.buttons import OptionButton
 
 
-class SelectionScreen(BaseScreen[int | None]):
+class SelectionScreen(BaseScreen[int | None, None, None]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """

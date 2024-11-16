@@ -3,6 +3,7 @@ from datetime import datetime
 from logging import Formatter, LogRecord
 from queue import Queue
 from threading import Thread
+from time import sleep
 from typing import Any, ClassVar
 
 from rich.console import ConsoleRenderable
@@ -11,8 +12,6 @@ from rich.traceback import Traceback
 from textual.app import _NullFile  # noqa: PLC2701
 from textual.binding import Binding, BindingType
 from textual.widgets import RichLog
-
-STOP_CODE = "STOP"
 
 
 class RichLogExtended(RichLog):
@@ -28,6 +27,7 @@ class RichLogExtended(RichLog):
         super().__init__(*args, max_lines=1000, highlight=True, markup=True, wrap=True, **kwargs)
         self.raw: list[str] = []
         self.formatter = Formatter("(%(asctime)s)[%(levelname)s] %(name)s: %(message)s", "%H:%M:%S")
+        self.stopped = False
 
     def action_clear(self) -> None:
         self.clear()
@@ -39,7 +39,8 @@ class RichLogExtended(RichLog):
 
     def on_unmount(self) -> None:
         if RichLogExtended._thread:
-            RichLogExtended.queue.put_nowait((STOP_CODE, ""))
+            self.stopped = True
+            RichLogExtended.queue.put_nowait(("STOPPED", "STOPPED"))
             RichLogExtended._thread.join()
         RichLogExtended._thread = None
 
@@ -50,15 +51,14 @@ class RichLogExtended(RichLog):
         self.notify(f"Autoscroll {'enabled' if self.auto_scroll else 'disabled'}")
 
     def empty_queue(self) -> None:
-        while True:
+        while not self.stopped:
             raw, renderable = RichLogExtended.queue.get()
-            if raw == STOP_CODE:
-                return
             if isinstance(raw, str):
                 self.raw.append(raw)
             else:
                 self.raw.append(self.formatter.format(raw))
             self.app.call_from_thread(self.write, renderable, expand=True)
+            sleep(0.5)
 
     def action_dump(self) -> None:
         with open(f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log", "w+", encoding="utf-8") as f:

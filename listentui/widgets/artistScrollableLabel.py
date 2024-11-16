@@ -3,7 +3,7 @@ from textual.app import ComposeResult
 from textual.widget import Widget
 
 from listentui.listen.interface import Artist, Character, Song
-from listentui.screen.modal.messages import SpawnArtistScreen
+from listentui.screen.modal.messages import SpawnArtistScreen, SpawnCharacterScreen
 from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
@@ -58,4 +58,4 @@ class ArtistScrollableLabel(Widget):
         if isinstance(lookup, Artist):
             self.post_message(SpawnArtistScreen(lookup.id))
         else:
-            self.notify(f"character screen {lookup.format_name()}")
+            self.post_message(SpawnCharacterScreen(lookup.id))

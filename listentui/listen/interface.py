@@ -226,14 +226,31 @@ class Character(ConfigurableBase):
     id: CharacterID
     name: str | None = None
     name_romaji: str | None = None
+    albums: list[Album] | None = None
+    album_count: int | None = None
+    song_count: int = field(init=False)
     link: str = field(init=False)
 
     def __post_init__(self):
         self.link = f"https://listen.moe/characters/{self.id}"
+        total = 0
+        if self.albums:
+            for album in self.albums:
+                if album.songs:
+                    total += len(album.songs)
+        self.song_count = total
 
     @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
-        return cls(id=data["id"], name=data.get("name"), name_romaji=data.get("nameRomaji"))
+        return cls(
+            id=data["id"],
+            name=data.get("name"),
+            name_romaji=data.get("nameRomaji"),
+            album_count=len(data["albums"]) if data.get("albums") else None,
+            albums=[Album.from_data(album) for album in data["albums"]]
+            if data.get("albums") and len(data["albums"]) != 0
+            else None,
+        )
 
     def format_name(self, romaji_first: bool | None = None) -> str:
         name = (self.name_romaji or self.name) if self.romaji_first(romaji_first) else (self.name or self.name_romaji)

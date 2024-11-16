@@ -17,7 +17,14 @@ from listentui.screen.login import LoginScreen
 from listentui.screen.main import MainScreen
 from listentui.screen.modal.albumScreen import AlbumScreen
 from listentui.screen.modal.artistScreen import ArtistScreen
-from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSongScreen, SpawnSourceScreen
+from listentui.screen.modal.characterScreen import CharacterScreen
+from listentui.screen.modal.messages import (
+    SpawnAlbumScreen,
+    SpawnArtistScreen,
+    SpawnCharacterScreen,
+    SpawnSongScreen,
+    SpawnSourceScreen,
+)
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.screen.modal.sourceScreen import SourceScreen
 from listentui.widgets.player import MPVThread, Player
@@ -50,7 +57,11 @@ class ListentuiApp(App[str]):
 
     async def on_unmount(self) -> None:
         Config.get_config().save()
-        await asyncio.wait_for(self.terminate_components(), timeout=20)
+        try:
+            async with asyncio.timeout_at(asyncio.get_event_loop().time() + 10):
+                await self.terminate_components()
+        except asyncio.TimeoutError:
+            sys.exit(1)
 
     def action_handle_url(self, url: str) -> None:
         self.open_url(url, new_tab=True)
@@ -67,7 +78,6 @@ class ListentuiApp(App[str]):
         self.player = None
         await self.screen.remove()
         await self.terminate_components()
-        # await self.recompose()
         self.login_and_load()
 
     @on(SettingPage.RequestRestart)
@@ -113,20 +123,29 @@ class ListentuiApp(App[str]):
         self.player = event.player
 
     @on(SpawnArtistScreen)
-    def push_screen_artist(self, event: SpawnArtistScreen) -> None:
-        self.push_screen(ArtistScreen(event.artist_id))
+    @work
+    async def push_screen_artist(self, event: SpawnArtistScreen) -> None:
+        await self.push_screen(await ArtistScreen.load(self.app, event.artist_id))
 
     @on(SpawnAlbumScreen)
-    def push_album_screen(self, event: SpawnAlbumScreen) -> None:
-        self.push_screen(AlbumScreen(event.album_id))
+    @work
+    async def push_album_screen(self, event: SpawnAlbumScreen) -> None:
+        await self.push_screen(await AlbumScreen.load(self.app, event.album_id))
 
     @on(SpawnSongScreen)
-    def push_song_screen(self, event: SpawnSongScreen) -> None:
-        self.push_screen(SongScreen(event.song_id))
+    @work
+    async def push_song_screen(self, event: SpawnSongScreen) -> None:
+        await self.push_screen(await SongScreen.load_with_favorited(self.app, event.song_id))
 
     @on(SpawnSourceScreen)
-    def push_source_screen(self, event: SpawnSourceScreen) -> None:
-        self.push_screen(SourceScreen(event.source_id))
+    @work
+    async def push_source_screen(self, event: SpawnSourceScreen) -> None:
+        await self.push_screen(await SourceScreen.load(self.app, event.source_id))
+
+    @on(SpawnCharacterScreen)
+    @work
+    async def push_character_screen(self, event: SpawnCharacterScreen) -> None:
+        await self.push_screen(await CharacterScreen.load(self.app, event.character_id))
 
     # @on(ShowFloatingPlayer)
     # async def show_floating_player(self) -> None:
@@ -161,9 +180,12 @@ def run() -> None:
 
     app = ListentuiApp()
     signal.signal(signal.SIGTERM, sigterm_handler)
-    output = app.run()
-    if output is not None:
-        print(output)
+    try:
+        output = app.run()
+        if output is not None:
+            print(output)
+    except KeyboardInterrupt:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

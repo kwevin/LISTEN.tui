@@ -1,53 +1,54 @@
 from typing import ClassVar, Self
 
-from textual import on, work
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, Horizontal, VerticalScroll
 from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView
 
-from listentui.listen import Artist, ArtistID, ListenClient
+from listentui.listen import ListenClient
+from listentui.listen.interface import Character, CharacterID
 from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnSongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
-class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
+class CharacterScreen(BaseScreen[None, CharacterID, Character]):
     DEFAULT_CSS = """
-    ArtistScreen {
+    CharacterScreen {
         align: center middle;
     }
-    ArtistScreen #box {
+    CharacterScreen #box {
         width: 100%;
         margin: 4 4 6 4;
         height: 100%;
         border: thick $background 80%;
         background: $surface;
     }
-    ArtistScreen Center {
+    CharacterScreen Center {
         margin-top: 1;
     }
-    ArtistScreen Horizontal {
+    CharacterScreen Horizontal {
         width: 100%;
         height: auto;
         margin-bottom: 1;
     }
-    ArtistScreen Horizontal Label {
+    CharacterScreen Horizontal Label {
         margin-right: 1;
     }
-    ArtistScreen > * {
+    CharacterScreen > * {
         padding-left: 2;
         padding-right: 2;
     }
-    ArtistScreen VerticalScroll {
+    CharacterScreen VerticalScroll {
         margin: 1 0;
     }
-    ArtistScreen SongListView {
+    CharacterScreen SongListView {
         margin-right: 2;
     }
-    ArtistScreen CollapsibleTitle {
+    CharacterScreen CollapsibleTitle {
         width: 100%;
         margin-right: 1;
     }
@@ -56,34 +57,26 @@ class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
         ("escape", "cancel"),
     ]
 
-    def __init__(self, artist_id: ArtistID, artist: Artist):
+    def __init__(self, character_id: CharacterID, character: Character):
         super().__init__()
-        self.artist_id = artist_id
-        self.artist = artist
+        self.character_id = character_id
+        self.character = character
 
     def compose(self) -> ComposeResult:
-        # lazy for the win!!
         yield EscButton()
         with Container(id="box"):  # noqa: PLR1702
             yield Center(Label(id="name"))
             with Horizontal():
                 yield Label(id="albums-count")
                 yield Label(id="songs-count")
-            yield Label(id="links")
             with VerticalScroll():
-                if self.artist.albums:
-                    for album in self.artist.albums:
+                if self.character.albums:
+                    for album in self.character.albums:
                         if album.songs:
                             with Collapsible(title=f"{album.format_name()}\n{len(album.songs)} Songs"), Lazy(
                                 SongListView(initial_index=None)
                             ):
                                 yield from [SongItem(song) for song in album.songs]
-
-                if self.artist.songs_without_album:
-                    with Collapsible(title=f"- No album -\n{len(self.artist.songs_without_album)} Songs"), Lazy(
-                        SongListView(initial_index=None)
-                    ):
-                        yield from [SongItem(song) for song in self.artist.songs_without_album]
 
     @on(SongListView.SongSelected)
     async def song_selected(self, event: SongListView.SongSelected) -> None:
@@ -99,17 +92,16 @@ class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
             self.scroll_to_widget(event.item, center=True)
 
     async def on_mount(self) -> None:
-        self.query_one("#name", Label).update(self.artist.format_name())
-        self.query_one("#albums-count", Label).update(f"{self.artist.album_count or 'No'} Albums")
-        self.query_one("#songs-count", Label).update(f"- {self.artist.song_count or 'No'} Songs")
-        self.query_one("#links", Label).update(f"{self.artist.format_socials(sep=' ', use_app=True) or 'No Socials'}")
+        self.query_one("#name", Label).update(self.character.format_name())
+        self.query_one("#albums-count", Label).update(f"{self.character.album_count or 'No'} Albums")
+        self.query_one("#songs-count", Label).update(f"- {self.character.song_count or 'No'} Songs")
 
     @classmethod
-    async def load(cls, app: App, load_id: ArtistID) -> Self:
+    async def load(cls, app: App, load_id: CharacterID) -> Self:
         client = ListenClient.get_instance()
-        artist = await app.push_screen_wait(LoadingScreen(client.artist(load_id)))
-        assert artist is not None
-        return cls(load_id, artist)
+        res = await app.push_screen_wait(LoadingScreen(client.character(load_id)))
+        assert res is not None
+        return cls(load_id, res)
 
     def action_cancel(self) -> None:
         self.dismiss()

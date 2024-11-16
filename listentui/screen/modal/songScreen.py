@@ -4,7 +4,7 @@ from typing import ClassVar, cast
 
 from rich.text import Text
 from textual import on, work
-from textual.app import ComposeResult
+from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Container, Grid, Horizontal
 from textual.widgets import Label
@@ -13,7 +13,7 @@ from listentui.data import get_song_duration
 from listentui.data.config import Config
 from listentui.data.theme import Theme
 from listentui.listen import ListenClient, RequestError, Song, SongID
-from listentui.screen.modal.baseScreen import BaseScreen
+from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
 from listentui.utilities import format_time_since
@@ -24,7 +24,7 @@ from listentui.widgets.mpvThread import MPVThread, PreviewStatus, PreviewType
 from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
-class SongScreen(BaseScreen[bool]):
+class SongScreen(BaseScreen[bool, SongID, Song]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """
@@ -84,19 +84,16 @@ class SongScreen(BaseScreen[bool]):
         ("escape", "cancel"),
     ]
 
-    def __init__(self, song_id: SongID, favorited: bool | None = None):
+    def __init__(self, song_id: SongID, song: Song, favorited: bool | None = None):
         super().__init__()
         self.song_id = song_id
-        self.song: Song | None = None
+        self.song: Song = song
         self.got_favorited = favorited
         self.is_favorited = False
 
     def compose(self) -> ComposeResult:
         yield EscButton()
         with Grid():
-            if self.song is None:
-                return
-
             yield Label("Track/Artist")
             yield Label("Album")
             yield Label("Source")
@@ -154,27 +151,24 @@ class SongScreen(BaseScreen[bool]):
             case _:
                 return
 
-    def on_mount(self) -> None:
-        self.query_one(Grid).loading = True
-        self.fetch_song()
-
     @work
-    async def fetch_song(self) -> None:
+    async def on_mount(self) -> None:
         client = ListenClient.get_instance()
-        song = await client.song(self.song_id)
-        if song is None:
-            raise Exception("Song cannot be None")
-        self.song = song
-        await self.recompose()
-        self.query_one(ArtistScrollableLabel).update(song)
+        self.query_one(ArtistScrollableLabel).update(self.song)
         self.query_one(Grid).border_subtitle = f"[{self.song.id}]"
         self.query_one(Grid).border_title = f"Uploader: {self.song.uploader.display_name}" if self.song.uploader else ""
         if self.got_favorited:
             self.is_favorited = self.got_favorited
         elif client.logged_in:
-            self.is_favorited: bool = await client.check_favorite(song.id) or False
+            self.is_favorited: bool = await client.check_favorite(self.song.id) or False
         self.query_one("#favorite", ToggleButton).set_toggle_state(self.is_favorited)
-        self.query_one(Grid).loading = False
+
+    @classmethod
+    async def load_with_favorited(cls, app: App, load_id: SongID, favorited: bool = False):
+        client = ListenClient.get_instance()
+        res = await app.push_screen_wait(LoadingScreen(client.song(load_id)))
+        assert res is not None
+        return cls(load_id, res, favorited)
 
     def action_cancel(self) -> None:
         Thread(target=MPVThread.terminate_preview, name="terminate_preview", daemon=True).start()
