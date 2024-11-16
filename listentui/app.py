@@ -1,11 +1,14 @@
 import asyncio
+import logging
 import signal
 import sys
 from contextlib import suppress
+from logging import getLogger
 
 from textual import on, work
 from textual.app import App
 
+from listentui.data import load_duration_map
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ConfigurableBase
@@ -17,8 +20,6 @@ from listentui.screen.modal.artistScreen import ArtistScreen
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSongScreen, SpawnSourceScreen
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.screen.modal.sourceScreen import SourceScreen
-from listentui.screen.mpvWarning import MPVWarningScreen
-from listentui.utilities.logger import create_logger
 from listentui.widgets.player import MPVThread, Player
 
 
@@ -30,7 +31,7 @@ class ListentuiApp(App[str]):
         self.player: Player | None = None
 
     def on_load(self) -> None:
-        create_logger(Config.get_config().advance.stats_for_nerd, self.app.console)
+        getLogger().setLevel(logging.DEBUG if Config.get_config().advance.stats_for_nerd else logging.WARNING)
 
     @work
     async def on_mount(self) -> None:
@@ -38,12 +39,13 @@ class ListentuiApp(App[str]):
 
     @work
     async def login_and_load(self) -> None:
+        config = Config.get_config()
         status = await self.push_screen_wait(LoginScreen())
         if not status:
             self.exit(return_code=1, message="Login failed, please check your username and password")
             return
         # configure the client interface
-        ConfigurableBase.prefer_romaji_first = Config.get_config().display.romaji_first
+        ConfigurableBase.prefer_romaji_first = config.display.romaji_first
         self.push_screen(MainScreen())
 
     async def on_unmount(self) -> None:

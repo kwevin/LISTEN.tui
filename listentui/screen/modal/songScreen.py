@@ -9,6 +9,8 @@ from textual.binding import BindingType
 from textual.containers import Container, Grid, Horizontal
 from textual.widgets import Label
 
+from listentui.data import get_song_duration
+from listentui.data.config import Config
 from listentui.data.theme import Theme
 from listentui.listen import ListenClient, RequestError, Song, SongID
 from listentui.screen.modal.baseScreen import BaseScreen
@@ -74,6 +76,9 @@ class SongScreen(BaseScreen[bool]):
     SongScreen DurationProgressBar {
         offset: 0 1;
     }
+    SongScreen #duration.debug_missing {
+        color: yellow;
+    }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel"),
@@ -113,7 +118,13 @@ class SongScreen(BaseScreen[bool]):
                     id="source",
                 )
             )
-            yield Label(f"Duration: {self.song.duration}", id="duration")
+            missing_duration = get_song_duration(self.song.id)
+            fetch_missing = Config.get_config().advance.stats_for_nerd
+            yield Label(
+                f"Duration: {missing_duration or self.song.duration}",
+                id="duration",
+                classes="debug_missing" if missing_duration and fetch_missing else None,
+            )
             yield Label(
                 f"Last played: {format_time_since(self.song.last_played, True) if self.song.last_played else None}",
                 id="last_play",
@@ -216,7 +227,9 @@ class SongScreen(BaseScreen[bool]):
     async def request(self) -> None:
         song = cast(Song, self.song)
         client = ListenClient.get_instance()
+        self.query_one("#request").set_loading(True)
         res: Song | RequestError = await client.request_song(song.id, exception_on_error=False)
+        self.query_one("#request").set_loading(False)
         if isinstance(res, Song):
             title = res.format_title()
             artist = res.format_artists()

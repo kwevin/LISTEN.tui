@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timedelta
 from enum import Enum
 from logging import getLogger
+from math import ceil
 from string import Template
 from typing import Any, cast
 
@@ -16,7 +17,7 @@ import websockets.client as websockets
 from pypresence import AioPresence, DiscordNotFound  # type: ignore
 from pypresence.exceptions import PipeClosed, ResponseTimeout
 from pypresence.payloads import Payload  # type: ignore
-from rich.pretty import pretty_repr
+from rich.pretty import pprint, pretty_repr
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -27,9 +28,10 @@ from textual.widgets import Label
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from listentui import __NO_MPV__
+from listentui.data import get_song_duration
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
-from listentui.listen.interface import ListenWsData, Song
+from listentui.listen.interface import ListenWsData, Song, SongID
 from listentui.widgets.durationProgressBar import DurationProgressBar
 from listentui.widgets.floatingPlayer import HideFloatingPlayer, ShowFloatingPlayer
 from listentui.widgets.mpvThread import MPVThread
@@ -207,6 +209,7 @@ class Player(Widget):
         self.ws_data: ListenWsData | None = None
         self.song: Song | None = None
         self.is_first_song = True
+        self._song_count = 0  # use for calculating first song only
         self.progress_bar = DurationProgressBar(stop=True, pause_on_end=True)
         self.player = MPVThread(self)
         self.retries = 0
@@ -357,11 +360,20 @@ class Player(Widget):
                     res: dict[str, Any] = json.loads(await self._ws.recv())
                     match res["op"]:
                         case 1:
-                            self.ws_data = ListenWsData.from_data(res)
+                            new_data = ListenWsData.from_data(res)
+                            # new_data.song.duration = get_song_duration(new_data.song.id) or new_data.song.duration
+                            # TODO: remove once they fix the bug
+                            if new_data.song.duration is None or new_data.song.duration == 0:
+                                new_data.song.duration = await self.get_missing_duration(new_data.song)
+
+                            self.ws_data = new_data
                             self.post_message(self.WebsocketUpdated(self.ws_data))
-                            if self.is_first_song:
+                            if not self._song_count and self.is_first_song:
                                 self.progress_bar.try_calculate_duration(self.ws_data)
+                                self._song_count += 1
+                            elif self._song_count and self.is_first_song:
                                 self.is_first_song = False
+                                self.progress_bar.update_progress(self.ws_data.song)
                             else:
                                 self.progress_bar.update_progress(self.ws_data.song)
                             self.update_container(self.ws_data)
@@ -514,3 +526,17 @@ class Player(Widget):
     def on_show(self) -> None:
         self.on_display = True
         self.post_message(HideFloatingPlayer())
+
+    async def get_missing_duration(self, song: Song) -> int:
+        """
+        This works because of a bug, will be removed
+        for duration_map once fixed (if ever)
+        """
+
+        client = ListenClient.get_instance()
+
+        history = await client.history(2, 0)
+
+        if history[1].song.id == song.id:
+            return ceil((history[0].created_at - history[1].created_at).total_seconds())
+        return 0

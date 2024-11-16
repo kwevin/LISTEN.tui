@@ -203,7 +203,7 @@ class ScrollableLabel(Widget):
     def _on_resize(self, event: events.Resize) -> None:
         if self._is_scrolling:
             return
-        if not self.visible:
+        if not self.is_on_screen:
             return
         self.refresh(layout=True)
         self._reset_state()

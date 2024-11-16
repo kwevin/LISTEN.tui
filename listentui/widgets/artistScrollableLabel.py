@@ -20,9 +20,10 @@ class ArtistScrollableLabel(Widget):
         super().__init__()
         self.song = song
         self._lookup_table: dict[int, Artist | Character] = {}
+        self._label = ScrollableLabel(id="artist")
 
     def compose(self) -> ComposeResult:
-        yield ScrollableLabel(id="artist")
+        yield self._label
 
     def on_mount(self) -> None:
         if self.song:
@@ -47,7 +48,7 @@ class ArtistScrollableLabel(Widget):
                 self._lookup_table[idx] = artist
                 idx += 1
 
-        self.query_one("#artist", ScrollableLabel).update(*artist_list)
+        self._label.update(*artist_list)
 
     async def on_scrollable_label_clicked(self, event: ScrollableLabel.Clicked) -> None:
         event.stop()

@@ -233,11 +233,11 @@ class Login(Generic):
             self.notify("Already logged in", title="Login", timeout=1)
             return
 
-        event.control.loading = True
+        event.control.set_loading(True)
         username: str = self.app.query_one("#setting-client-username", Generic).setting.value
         password: str = self.query_one(GenericField).setting.value
         user = await client.login(username, password)
-        event.control.loading = False
+        event.control.set_loading(False)
         if not user:
             event.control.variant = "error"
             self.notify("Please check your username and/or password", title="Login Failed", severity="warning")

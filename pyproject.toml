@@ -9,17 +9,17 @@ readme = "README.md"
 python = ">=3.11,<3.13"
 pypresence = "^4.3.0"
 python-mpv = "^1.0.6"
-rich = "^13.9.2"
+rich = "^13.9.4"
 tomli = "^2.0.1"
 tomli-w = "^1.0.0"
 markdownify = "^0.12.1"
-textual = {extras = ["syntax"], version = "^0.82.0"}
+textual = {extras = ["syntax"], version = "^0.85.2"}
 gql = { extras = ["aiohttps"], version = "^3.5.0" }
 xdg = "^6.0.0"
 frozendict = "^2.4.4"
 async-lru = "^2.0.4"
 yt-dlp = "^2024.8.6"
-ytmusicapi = "^1.8.1"
+ytmusicapi = "^1.8.2"
 pytz = "^2024.2"
 
 [tool.poetry.group.dev.dependencies]

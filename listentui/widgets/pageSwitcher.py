@@ -11,7 +11,9 @@ from textual.message import Message
 from textual.reactive import reactive, var
 from textual.validation import Number
 from textual.widget import Widget
-from textual.widgets import Input, Label, Static
+from textual.widgets import Label, Static
+
+from listentui.widgets.minimal_input import MinimalInput
 
 
 class PageNavigationButton(Static, can_focus=True):
@@ -121,25 +123,6 @@ class PageInputSelector(Widget):
         height: 1;
         width: auto;
     }
-
-    PageInputSelector Input {
-        width: auto;
-        height: 1;
-        padding: 0;
-        border: none;
-        
-        &:focus {
-            border: none;
-        }
-
-        &>.input--cursor,&>.input--placeholder,&>.input--suggestion,&.-invalid,&.-invalid:focus {
-            border: none;
-        }
-
-        &.-invalid, &.-invalid:focus {
-            color: red;
-        }
-    }
     """
 
     def __init__(self, pageswitcher: PageSwitcher, limit: int) -> None:
@@ -147,7 +130,7 @@ class PageInputSelector(Widget):
         self.page_switcher = pageswitcher
         self.current = 1
         self.max = limit
-        self.input = Input(validators=Number(minimum=1, maximum=limit))
+        self.input = MinimalInput(validators=Number(minimum=1, maximum=limit))
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -189,7 +172,7 @@ class PageInputSelector(Widget):
         self.current = min(self.current + 1, self.max)
         self.input.value = f"{self.current}"
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_input_submitted(self, event: MinimalInput.Submitted) -> None:
         if event.validation_result and event.validation_result.is_valid:
             self.page_switcher.set_page(int(event.value))
             self.page_switcher.focus()

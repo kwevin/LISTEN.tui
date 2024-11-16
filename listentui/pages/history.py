@@ -21,7 +21,7 @@ from listentui.pages.base import BasePage
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnArtistScreen, SpawnSourceScreen
 from listentui.screen.modal.selectionScreen import SelectionScreen
 from listentui.screen.modal.songScreen import SongScreen
-from listentui.utilities import de_kuten, format_time_since
+from listentui.utilities import format_time_since, get_root
 
 
 class MarkupMatcher(Matcher):
@@ -76,7 +76,10 @@ class HistoryPage(BasePage):
         width: 25
     }
     """
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("ctrl+r", "refresh", "Refresh")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("ctrl+r", "refresh", "Refresh"),
+        Binding("ctrl+d", "dump", "Dump", show=False),
+    ]
 
     history_result: var[list[PlayStatistics]] = var([], init=False, always_update=True)
 
@@ -122,7 +125,10 @@ class HistoryPage(BasePage):
 
     def on_show(self) -> None:
         self.update_time_since()
-        self.action_refresh()
+        if not self.history_result:
+            self.action_refresh()
+        if self.config.display.auto_refresh_history:
+            self.action_refresh()
 
     def update_time_since(self) -> None:
         self.query_one(Label).update(f"Last Updated: {format_time_since(self.last_updated_time)}")
@@ -141,14 +147,14 @@ class HistoryPage(BasePage):
                 played_at = history.created_at.strftime("%H:%M:%S")
             else:
                 played_at = history.created_at.strftime("%d-%m-%Y %H:%M:%S")
-            rows: Sequence[str | Text] = [
+            rows: list[str | Text] | list[Text] = [
                 Text(str(sid), style=f"{Theme.ACCENT}") if self.favorited.get(song.id) else Text(str(song.id)),
-                de_kuten(song.format_title() or ""),
-                Text(de_kuten(history.requester.display_name), style=f"{Theme.ACCENT}") if history.requester else "",
+                song.format_title() or "",
+                Text(history.requester.display_name, style=f"{Theme.ACCENT}") if history.requester else "",
                 played_at,
-                de_kuten(song.format_artists()),
-                de_kuten(song.format_album()),
-                de_kuten(song.format_source()),
+                song.format_artists(),
+                song.format_album(),
+                song.format_source(),
             ]
 
             # filter by time
@@ -279,7 +285,7 @@ class HistoryPage(BasePage):
         return self.table_lookup[rowkey].song
 
     def action_dump(self):
-        with open("table_dump", "w+", encoding="utf-8") as f:
+        with open(get_root().joinpath("table_dump"), "w", encoding="utf-8") as f:
             f.write(f"{[str(col.label) for col in self.table.columns.values()]},\n")
             for row in self.table._data:
                 items = self.table.get_row(row)

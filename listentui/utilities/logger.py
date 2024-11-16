@@ -1,37 +1,47 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false
-import json
-import logging
 from datetime import datetime
-from logging import Handler, Logger, LogRecord
-from os import write
+from logging import Formatter, LogRecord
 from queue import Queue
+from threading import Thread
 from typing import Any, ClassVar
 
-from rich.console import Console, ConsoleRenderable
-from rich.highlighter import Highlighter, JSONHighlighter
+from rich.console import ConsoleRenderable
 from rich.logging import RichHandler
 from rich.traceback import Traceback
 from textual.app import _NullFile  # noqa: PLC2701
 from textual.binding import Binding, BindingType
-from textual.events import Resize
 from textual.widgets import RichLog
+
+STOP_CODE = "STOP"
 
 
 class RichLogExtended(RichLog):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("c", "clear", "Clear"),
         Binding("d", "toggle_autoscroll", "Toggle Autoscroll"),
-        Binding("f", "empty_queue", "Refresh Logs"),
         Binding("ctrl+d", "dump", "Dump Logs"),
     ]
-    queue: Queue[ConsoleRenderable] = Queue(maxsize=-1)
+    queue: Queue[tuple[LogRecord | str, ConsoleRenderable | str]] = Queue(maxsize=-1)
+    _thread: Thread | None = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, max_lines=1000, highlight=True, markup=True, wrap=True, **kwargs)
-        self.set_interval(5, self.action_empty_queue)
+        self.raw: list[str] = []
+        self.formatter = Formatter("(%(asctime)s)[%(levelname)s] %(name)s: %(message)s", "%H:%M:%S")
 
     def action_clear(self) -> None:
         self.clear()
+
+    def on_mount(self) -> None:
+        if not RichLogExtended._thread:
+            RichLogExtended._thread = Thread(target=self.empty_queue, daemon=True)
+        RichLogExtended._thread.start()
+
+    def on_unmount(self) -> None:
+        if RichLogExtended._thread:
+            RichLogExtended.queue.put_nowait((STOP_CODE, ""))
+            RichLogExtended._thread.join()
+        RichLogExtended._thread = None
 
     def action_toggle_autoscroll(self) -> None:
         self.auto_scroll = not self.auto_scroll
@@ -39,18 +49,20 @@ class RichLogExtended(RichLog):
             self.scroll_end()
         self.notify(f"Autoscroll {'enabled' if self.auto_scroll else 'disabled'}")
 
-    def on_resize(self, event: Resize) -> None:
-        super().on_resize(event)
-        self.action_empty_queue()
-
-    def action_empty_queue(self) -> None:
-        while not RichLogExtended.queue.empty():
-            self.write(RichLogExtended.queue.get_nowait())
+    def empty_queue(self) -> None:
+        while True:
+            raw, renderable = RichLogExtended.queue.get()
+            if raw == STOP_CODE:
+                return
+            if isinstance(raw, str):
+                self.raw.append(raw)
+            else:
+                self.raw.append(self.formatter.format(raw))
+            self.app.call_from_thread(self.write, renderable, expand=True)
 
     def action_dump(self) -> None:
         with open(f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log", "w+", encoding="utf-8") as f:
-            for line in self.lines:
-                f.write(line.text)
+            f.writelines([line + "\n" for line in self.raw])
 
 
 class RichLogHandler(RichHandler):
@@ -94,27 +106,6 @@ class RichLogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                # we write to widget instead of console
-                RichLogExtended.queue.put_nowait(log_renderable)
+                RichLogExtended.queue.put_nowait((record, log_renderable))
             except Exception:
                 self.handleError(record)
-
-
-def get_logger() -> Logger:
-    return logging.getLogger("LISTENtui")
-
-
-def create_logger(verbose: bool, console: Console) -> Logger:
-    level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        # format="(%(asctime)s)[%(levelname)s] %(name)s: %(message)s",
-        handlers=[RichLogHandler(highlighter=JSONHighlighter(), markup=True, rich_tracebacks=True)],
-        datefmt="%H:%M:%S",
-    )
-    # logging.addLevelName(logging.DEBUG, "[grey37]DEBUG[/]")
-    # logging.addLevelName(logging.INFO, "[white]INFO[/]")
-    # logging.addLevelName(logging.WARNING, "[yellow]WARNING[/]")
-    # logging.addLevelName(logging.ERROR, "[red]ERROR[/]")
-    return logging.getLogger("LISTENtui")

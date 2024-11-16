@@ -1,8 +1,5 @@
-import os
-import sys
 from dataclasses import asdict, dataclass, field
 from logging import getLogger
-from pathlib import Path
 from typing import Any, ClassVar, Protocol
 
 import tomli
@@ -64,12 +61,12 @@ class Presence(ConfigCatagory):
 class Display(ConfigCatagory):
     romaji_first: bool = True
     """Prefer romaji first"""
+    auto_refresh_history: bool = False
+    """Automatically refresh history"""
 
 
 @dataclass
 class Player(ConfigCatagory):
-    mpv_options: dict[str, Any] = field(default_factory=dict)
-    """MPV options to pass to mpv (see https://mpv.io/manual/master/#options)"""
     inactivity_timeout: int = 5
     """How long to wait after the player becomes inactive before restarting"""
     restart_timeout: int = 20
@@ -78,6 +75,8 @@ class Player(ConfigCatagory):
     """How much to raise/lower volume by"""
     dynamic_range_compression: bool = True
     """Enable dynamic range compression, will be over-ridden if specified in `mpv_options`"""
+    mpv_options: dict[str, Any] = field(default_factory=dict)
+    """MPV options to pass to mpv (see https://mpv.io/manual/master/#options)"""
 
     def __post_init__(self):
         if not self.mpv_options:
@@ -101,8 +100,8 @@ class Downloader(ConfigCatagory):
 class Advance(ConfigCatagory):
     stats_for_nerd: bool = False
     """Enable verbose logging and more"""
-    save_durations: bool = False
-    """Save duration for songs with no reported duration"""
+    fetch_missing_duration: bool = False
+    """Fetch duration for missing duration songs"""
 
 
 @dataclass

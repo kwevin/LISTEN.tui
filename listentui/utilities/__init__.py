@@ -1,11 +1,22 @@
+import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from listentui.utilities.logger import RichLogExtended, create_logger, get_logger
+from rich.highlighter import JSONHighlighter
 
-__all__ = ["RichLogExtended", "create_logger", "format_time_since", "get_logger"]
+from listentui.utilities.logger import RichLogExtended, RichLogHandler
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(message)s",
+    # format="(%(asctime)s)[%(levelname)s] %(name)s: %(message)s",
+    handlers=[RichLogHandler(highlighter=JSONHighlighter(), markup=True, rich_tracebacks=True)],
+    datefmt="%H:%M:%S",
+)
+
+__all__ = ["RichLogExtended", "de_kuten", "format_time_since", "format_time_since", "get_root"]
 
 
 def get_root() -> Path:

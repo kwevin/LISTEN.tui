@@ -125,7 +125,7 @@ class FeedView(ListView):
         self.post_message(self.FeedSelected(selected_child.song, selected_child.feed, selected_child))
 
 
-class ProfileTab(Widget):
+class ProfileTab(Widget, can_focus=True):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+r", "refresh", "Refresh"),
     ]
@@ -139,6 +139,7 @@ class ProfileTab(Widget):
             return
         self.action_refresh()
         self.should_reload = False
+        self.focus()
 
     def on_hide(self) -> None:
         self.should_reload = True

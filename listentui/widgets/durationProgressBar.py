@@ -9,6 +9,7 @@ from textual.reactive import reactive, var
 from textual.widget import Widget
 from textual.widgets import ProgressBar, Static
 
+from listentui.data import get_song_duration
 from listentui.data.config import Config
 from listentui.listen import Song
 from listentui.listen.interface import ListenWsData
@@ -50,6 +51,9 @@ class DurationProgressBar(Widget):
     DurationProgressBar _DurationLabel {
         width: auto;
         margin-left: 2;
+    }
+    DurationProgressBar _DurationLabel.debug_missing {
+        color: yellow;
     }
     """
 
@@ -96,6 +100,7 @@ class DurationProgressBar(Widget):
             current = 0
         if not data.song.duration:
             current = 0
+        current = max(current, 0)
         self.current = current
         self.total = data.song.duration or 0
         self.progress_label.total = self.total
@@ -107,6 +112,11 @@ class DurationProgressBar(Widget):
         self.total = song.duration or 0
         self.progress_label.total = self.total
         self.progress_bar.update(total=self.total if self.total != 0 else None, progress=self.current)
+
+        if get_song_duration(song.id) is not None and Config.get_config().advance.stats_for_nerd:
+            self.query_one(_DurationLabel).add_class("debug_missing")
+        else:
+            self.query_one(_DurationLabel).remove_class("debug_missing")
 
     def update_total(self, total: int) -> None:
         self.total = total
