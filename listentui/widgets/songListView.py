@@ -5,7 +5,7 @@ from typing import cast
 from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
-from textual.containers import Grid
+from textual.containers import Container, Grid
 from textual.message import Message
 from textual.widgets import Label, ListItem, ListView, Static
 
@@ -17,39 +17,47 @@ from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
 class SongItem(ListItem):
-    SCOPED_CSS = False
     DEFAULT_CSS = """
     SongItem {
         padding: 1 0 1 0;
+        border-left: thick $background-lighten-2;
     }
-    SongItem ScrollableLabel {
+    SongItem ScrollableLabel, SongItem Label{
         margin-left: 1;
-        width: auto;
     }
-    SongItem > Widget :hover {
-        background: $boost !important;
+    SongItem ArtistScrollableLabel ScrollableLabel {
+        margin-left: 0;
     }
-    SongListView SongItem :hover {
-        background: $boost !important;
+
+    SongItem ScrollableLabel, SongItem ArtistScrollableLabel {
+        margin-left: 1;
     }
-    SongListView > SongItem.--highlight {
-        background: $background-lighten-1;
+
+    SongItem > Container {
+        width: 1fr;
+        height: auto;
     }
-    SongListView:focus > SongItem.--highlight {
-        background: $background-lighten-1;
+    SongItem.favorited {
+        border-left: thick red;
     }
     """
 
-    def __init__(self, song: Song):
+    def __init__(self, song: Song, favorited: bool = False, should_id: bool = True):
+        if should_id:
+            super().__init__(id=f"_song-{song.id}")
+        else:
+            super().__init__()
         self.song = song
-        title = song.format_title()
-        super().__init__(
-            ScrollableLabel(
-                Text.from_markup(f"{title}"),
+        self.set_class(favorited, "favorited")
+        self.title = song.format_title()
+
+    def compose(self) -> ComposeResult:
+        with Container():
+            yield ScrollableLabel(
+                Text.from_markup(f"{self.title}"),
                 classes="item-title",
-            ),
-            ArtistScrollableLabel(song),
-        )
+            )
+            yield ArtistScrollableLabel(self.song)
 
     class SongChildClicked(Message):
         """For informing with the parent ListView that we were clicked"""
@@ -68,36 +76,35 @@ class SongItem(ListItem):
         event.stop()
         self.post_message(self.SongChildClicked(self))
 
-    async def _on_click(self, _: events.Click) -> None:
-        if any(label.mouse_hover for label in self.query(ScrollableLabel)):
+    def _on_click(self, _: events.Click) -> None:
+        if not self.highlighted:
+            return
+        if any(label.is_currently_highlighted() for label in self.query(ScrollableLabel)):
             return
         self.post_message(self.SongChildClicked(self))
 
+    def set_favorited_state(self, state: bool) -> None:
+        self.set_class(state, "favorited")
+
 
 class AdvSongItem(ListItem):
-    SCOPED_CSS = False
     DEFAULT_CSS = """
     AdvSongItem {
         padding: 1 0 1 0;
-        border-left: inner $background-lighten-2;
+        border-left: thick $background-lighten-2;
     }
-    AdvSongItem ScrollableLabel {
-        margin-left: 1;
-        width: auto;
-    }
-    AdvSongItem Label {
+    AdvSongItem ScrollableLabel, AdvSongItem Label {
         margin-left: 1;
     }
-    SongListView AdvSongItem :hover {
-        background: $boost !important;
+    AdvSongItem ArtistScrollableLabel ScrollableLabel {
+        margin-left: 0;
     }
-    SongListView > AdvSongItem.--highlight {
-        background: $boost;
-    }
-    SongListView:focus > AdvSongItem.--highlight {
-        background: $boost;
+
+    AdvSongItem ScrollableLabel, AdvSongItem ArtistScrollableLabel {
+        margin-left: 1;
     }
     AdvSongItem #alb-only  {
+        height: auto;
         grid-size: 2 2;
         grid-columns: 1fr 2fr;
         grid-rows: 1;
@@ -106,6 +113,7 @@ class AdvSongItem(ListItem):
     }
 
     AdvSongItem #source-only  {
+        height: auto;
         grid-size: 2 2;
         grid-columns: 1fr 2fr;
         grid-rows: 1;
@@ -114,6 +122,7 @@ class AdvSongItem(ListItem):
     }
 
     AdvSongItem #alb-source {
+        height: auto;
         grid-size: 3 2;
         grid-columns: 1fr 1fr 1fr;
         grid-rows: 1;
@@ -122,13 +131,16 @@ class AdvSongItem(ListItem):
     }
 
     AdvSongItem.favorited {
-        border-left: inner red;
+        border-left: thick red;
     }
 
     AdvSongItem Label {
         color: grey;
     }
-
+    AdvSongItem > Container {
+        width: 1fr;
+        height: auto;
+    }
     """
 
     def __init__(self, song: Song, favorited: bool = False, should_id: bool = True):
@@ -144,11 +156,12 @@ class AdvSongItem(ListItem):
 
     def compose(self) -> ComposeResult:
         if not self.source and not self.album:
-            yield ScrollableLabel(
-                Text.from_markup(f"{self.title}"),
-                classes="item-title",
-            )
-            yield ArtistScrollableLabel(self.song)
+            with Container():
+                yield ScrollableLabel(
+                    Text.from_markup(f"{self.title}"),
+                    classes="item-title",
+                )
+                yield ArtistScrollableLabel(self.song)
         elif self.album and not self.source:
             with Grid(id="alb-only"):
                 yield ScrollableLabel(
@@ -209,8 +222,10 @@ class AdvSongItem(ListItem):
         event.stop()
         self.post_message(SpawnAlbumScreen(cast(Album, self.song.album).id))
 
-    async def _on_click(self, _: events.Click) -> None:
-        if any(label.mouse_hover for label in self.query(ScrollableLabel)):
+    def _on_click(self, _: events.Click) -> None:
+        if not self.highlighted:
+            return
+        if any(label.is_currently_highlighted() for label in self.query(ScrollableLabel)):
             return
         self.post_message(self.SongChildClicked(self))
 
@@ -222,10 +237,34 @@ class SongListView(ListView):
     DEFAULT_CSS = """
     SongListView {
         height: auto;
-    }
-    SongListView SongItem, AdvSongItem {
-        margin-bottom: 1;
-        background: $background-lighten-1;
+        background: $background;
+        &:focus-within {
+            background-tint: $foreground 0%;
+        }
+        & > ListItem {
+            margin-bottom: 1;
+            # background-tint: $foreground 5%;
+            background: $surface;
+            &.-hovered {
+                background: $background-lighten-2;
+            }
+            
+            &.-highlight {
+                # background-tint: black 30%;
+                background-tint: $foreground 5%;
+                background: $background-lighten-1;
+            }
+
+            &:last-of-type {
+                margin-bottom: 0;
+            }
+        }
+        &:focus > ListItem.-highlight > Widget {
+            width: 1fr;
+            background-tint: $foreground 5%;
+            background: $background-lighten-1;
+            text-style: reverse;
+        }
     }
     """
 

@@ -8,7 +8,6 @@ from logging import getLogger
 from textual import on, work
 from textual.app import App
 
-from listentui.data import load_duration_map
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ConfigurableBase
@@ -27,11 +26,13 @@ from listentui.screen.modal.messages import (
 )
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.screen.modal.sourceScreen import SourceScreen
+from listentui.utilities import get_root
 from listentui.widgets.player import MPVThread, Player
 
 
 class ListentuiApp(App[str]):
     TITLE = "LISTEN.moe"
+    CSS_PATH = get_root().joinpath("testing.tcss")
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,6 +58,8 @@ class ListentuiApp(App[str]):
 
     async def on_unmount(self) -> None:
         Config.get_config().save()
+        self.exit()
+        # i give up, it freezes somewhere here
         try:
             async with asyncio.timeout_at(asyncio.get_event_loop().time() + 10):
                 await self.terminate_components()
@@ -67,12 +70,10 @@ class ListentuiApp(App[str]):
         self.open_url(url, new_tab=True)
 
     async def terminate_components(self) -> None:
-        if MPVThread.instance:
-            MPVThread.instance.terminate()
         with suppress(AttributeError):
             await ListenClient.get_instance().close()
-        if self.player and self.player.presense_connected:
-            await self.player.presence.clear()
+        if MPVThread.instance:
+            MPVThread.instance.terminate()
 
     async def restart(self) -> None:
         self.player = None
@@ -121,6 +122,16 @@ class ListentuiApp(App[str]):
     @on(Player.PlayerMounted)
     def save_player(self, event: Player.PlayerMounted) -> None:
         self.player = event.player
+
+    @on(Player.PlayerSetVolume)
+    def player_set_volume(self, event: Player.PlayerSetVolume) -> None:
+        if self.player:
+            self.player.player.set_volume(event.volume)
+
+    @on(Player.PreviewSetVolume)
+    def pv_set_volume(self, event: Player.PreviewSetVolume) -> None:
+        if self.player:
+            self.player.player.preview_set_volume(event.volume)
 
     @on(SpawnArtistScreen)
     @work

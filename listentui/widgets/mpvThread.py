@@ -8,7 +8,7 @@ from enum import Enum
 from logging import DEBUG, INFO, WARNING, getLogger
 from threading import Lock, Thread
 from time import sleep
-from typing import Any, Callable, Self, Type
+from typing import Any, Callable, Self, Type, cast
 
 from mpv import MPV, MpvEvent, MpvEventEndFile, ShutdownError
 from rich.repr import Result, RichReprResult
@@ -29,8 +29,9 @@ class PreviewType(Enum):
 
 
 class PreviewStatus:
-    def __init__(self, state: PreviewType, other: Any = None) -> None:
+    def __init__(self, state: PreviewType, control: MPVPreviewer, other: Any = None) -> None:
         self.state = state
+        self.control = control
         self.other = other
 
     def __rich_repr__(self) -> Result:
@@ -49,6 +50,7 @@ class MPVWatcher(Thread):
         self.soft_retry_cap = 5
         self.timeout_cap = 60
         self.terminated = False
+        self.is_player_restarting = False
 
     def run(self) -> None:
         while not self.terminated:
@@ -57,7 +59,9 @@ class MPVWatcher(Thread):
                 self._log.debug("Player is not alive, sleeping...")
                 continue
             if self.player.is_restarting():
-                self._log.debug("Player is currently restarting...")
+                if not self.is_player_restarting:
+                    self._log.debug("Player is currently restarting...")
+                    self.is_player_restarting = True
                 sleep(1)
                 continue
             if self.is_not_playing():
@@ -65,6 +69,7 @@ class MPVWatcher(Thread):
                 if self.is_not_playing():
                     self.dispatch_restart()
                 continue
+            self.is_player_restarting = False
             sleep(1)
 
     def is_player_alive(self) -> bool:
@@ -380,6 +385,10 @@ class MPVThread(Thread):
     def set_volume(self, volume: int) -> None:
         self.volume = volume
 
+    def preview_set_volume(self, volume: int) -> None:
+        if self.pv_thread and self.pv_thread.is_alive() and self.pv_thread.player:
+            self.pv_thread.player.volume = volume
+
     def raise_volume(self, amount: int) -> None:
         self.volume = min(self.volume + amount, 100)
 
@@ -417,7 +426,7 @@ class MPVThread(Thread):
     def preview(song_url: str, callback: Callable[[PreviewStatus], Any]) -> None:
         final_url = f"https://cdn.listen.moe/snippets/{song_url}".strip()
         if MPVThread.pv_thread and MPVThread.pv_thread.is_alive():
-            callback(PreviewStatus(PreviewType.LOCKED))
+            callback(PreviewStatus(PreviewType.LOCKED, MPVThread.pv_thread))
             return
         MPVThread.pv_thread = MPVPreviewer(final_url, callback, MPVThread.instance)
         MPVThread.pv_thread.start()
@@ -457,7 +466,7 @@ class MPVPreviewer(Thread):
         @player.event_callback("end-file")
         def check(event: MpvEvent):  # type: ignore
             if isinstance(event.data, MpvEventEndFile) and event.data.reason == MpvEventEndFile.ERROR:
-                safe_call(PreviewStatus(PreviewType.UNABLE))
+                safe_call(PreviewStatus(PreviewType.UNABLE, self))
                 self.terminated = True
 
         @player.property_observer("demuxer-cache-state")
@@ -465,20 +474,20 @@ class MPVPreviewer(Thread):
             if new_value is None:
                 return
             pv_data = MPVThread.DemuxerCacheState.from_cache_state(new_value)
-            safe_call(PreviewStatus(PreviewType.DATA, pv_data))
+            safe_call(PreviewStatus(PreviewType.DATA, self, pv_data))
 
         try:
             player.play(self.final_url)
             player.wait_until_playing(timeout=20)
-            safe_call(PreviewStatus(PreviewType.PLAYING))
+            safe_call(PreviewStatus(PreviewType.PLAYING, self, int(cast(int, player.volume))))
             if self.main_player:
                 self.main_player.pause()
             player.wait_for_playback(timeout=20)
-            safe_call(PreviewStatus(PreviewType.FINISHED))
+            safe_call(PreviewStatus(PreviewType.FINISHED, self))
         except Exception:
-            safe_call(PreviewStatus(PreviewType.ERROR))
+            safe_call(PreviewStatus(PreviewType.ERROR, self))
         else:
-            safe_call(PreviewStatus(PreviewType.DONE))
+            safe_call(PreviewStatus(PreviewType.DONE, self))
 
         player.terminate()
         if self.main_player and self.main_player.paused is not None and self.main_player.paused:

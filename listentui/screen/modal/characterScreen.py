@@ -1,6 +1,6 @@
 from typing import ClassVar, Self
 
-from textual import on
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Center, Container, Horizontal, VerticalScroll
@@ -8,10 +8,11 @@ from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView
 
 from listentui.listen import ListenClient
-from listentui.listen.interface import Character, CharacterID
+from listentui.listen.interface import Character, CharacterID, SongID
 from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnSongScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
@@ -57,10 +58,11 @@ class CharacterScreen(BaseScreen[None, CharacterID, Character]):
         ("escape", "cancel"),
     ]
 
-    def __init__(self, character_id: CharacterID, character: Character):
+    def __init__(self, character_id: CharacterID, character: Character, favorited: dict[SongID, bool]):
         super().__init__()
         self.character_id = character_id
         self.character = character
+        self.favorited = favorited
 
     def compose(self) -> ComposeResult:
         yield EscButton()
@@ -76,15 +78,17 @@ class CharacterScreen(BaseScreen[None, CharacterID, Character]):
                             with Collapsible(title=f"{album.format_name()}\n{len(album.songs)} Songs"), Lazy(
                                 SongListView(initial_index=None)
                             ):
-                                yield from [SongItem(song) for song in album.songs]
+                                yield from [SongItem(song, self.favorited.get(song.id, False)) for song in album.songs]
 
     @on(SongListView.SongSelected)
+    @work
     async def song_selected(self, event: SongListView.SongSelected) -> None:
-        client = ListenClient.get_instance()
-        favorited = False
-        if client.logged_in:
-            favorited = await client.check_favorite(event.song.id)
-        self.post_message(SpawnSongScreen(event.song.id, favorited))
+        favorited_status = await self.app.push_screen_wait(
+            await SongScreen.load_with_favorited(self.app, event.song.id, self.favorited.get(event.song.id, False))
+        )
+
+        if self.favorited.get(event.song.id, False) != favorited_status:
+            self.query_one(f"#_song-{event.song.id}", SongItem).set_favorited_state(favorited_status)
 
     @on(ListView.Highlighted)
     def child_highlighed(self, event: ListView.Highlighted) -> None:
@@ -101,7 +105,13 @@ class CharacterScreen(BaseScreen[None, CharacterID, Character]):
         client = ListenClient.get_instance()
         res = await app.push_screen_wait(LoadingScreen(client.character(load_id)))
         assert res is not None
-        return cls(load_id, res)
+        favorited = {}
+        if client.logged_in and res.albums:
+            song_ids = []
+            for album in res.albums:
+                song_ids.extend([song.id for song in album.songs or []])
+            favorited.update(await app.push_screen_wait(LoadingScreen(client.check_favorite(song_ids))))
+        return cls(load_id, res, favorited)
 
     def action_cancel(self) -> None:
         self.dismiss()

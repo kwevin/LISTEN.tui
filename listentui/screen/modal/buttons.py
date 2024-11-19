@@ -8,28 +8,52 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Button, Static
+from textual.widgets import Button, Label, Static
 
-from listentui.data.theme import Theme
 from listentui.listen import (
     ArtistID,
 )
-from listentui.listen.interface import Character
 from listentui.screen.modal.messages import SpawnArtistScreen
 from listentui.widgets.scrollableLabel import ScrollableLabel
 
 
-class OptionButton(Button):
-    def __init__(self, *args: Any, index: int, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+class OptionButton(Button, can_focus=False):
+    DEFAULT_CSS = """
+    OptionButton {
+        align: center middle;
+    }
+    OptionButton > ScrollableLabel {
+        margin: 0 1 0 1;
+    }
+    OptionButton > Label {
+        width: auto;
+    }
+    """
+
+    def __init__(self, text: str, index: int, **kwargs: Any) -> None:
+        super().__init__("")
+        self._size_known = False
+        self.text = text
         self.index = index
+
+    def compose(self) -> ComposeResult:
+        if self._size_known:
+            text = Text.from_markup(f"[{self.index}] {self.text}")
+            if text.cell_len < self.size.width:
+                yield Label(text, shrink=True)
+            else:
+                yield ScrollableLabel(text)
 
     class Selected(Message):
         def __init__(self, index: int) -> None:
             super().__init__()
             self.index = index
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
+    async def on_resize(self, event: events.Resize) -> None:
+        self._size_known = True
+        await self.recompose()
+
+    def on_click(self, event: events.Click) -> None:
         self.post_message(self.Selected(self.index))
 
 

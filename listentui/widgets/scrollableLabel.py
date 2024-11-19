@@ -1,12 +1,14 @@
-from typing import Iterable, Tuple
+from typing import ClassVar, Iterable, Tuple
 
 from rich.cells import cached_cell_len
+from rich.console import RenderableType
 from rich.repr import Result
+from rich.segment import Segment
 from rich.text import Span, Text
 from textual import events
-from textual.app import RenderResult
 from textual.message import Message
 from textual.reactive import reactive, var
+from textual.strip import Strip
 from textual.widget import Widget
 
 
@@ -14,6 +16,9 @@ class TextRange:
     def __init__(self, start: int, end: int) -> None:
         self.start = start
         self.end = end
+
+    def __repr__(self) -> str:
+        return f"{self.start} - {self.end}"
 
     def __hash__(self) -> int:
         return hash((self.start, self.end))
@@ -28,10 +33,17 @@ class TextRange:
 
 
 class ScrollableLabel(Widget):
+    COMPONENT_CLASSES: ClassVar[set[str]] = {"scrollable-label--highlighted"}
     DEFAULT_CSS = """
     ScrollableLabel {
         width: 100%;
         height: 1;
+
+        & > .scrollable-label--highlighted {
+            text-style: bold not underline;
+            background: $link-background-hover;
+            color: $link-color;
+        }
     }
     """
     text = reactive(Text, always_update=True)
@@ -108,7 +120,10 @@ class ScrollableLabel(Widget):
         )
         yield "spans", self.text.spans
 
-    def render(self) -> RenderResult:
+    def is_currently_highlighted(self) -> bool:
+        return self._current_highlighted != TextRange(-1, -1)
+
+    def render(self) -> RenderableType:
         return self.text
 
     def resume(self) -> None:
@@ -172,7 +187,7 @@ class ScrollableLabel(Widget):
         text_range = self._get_range_from_offset(self._mouse_pos)
         if not text_range:
             if self._current_highlighted != TextRange(-1, -1):
-                self._remove_underline()
+                self._remove_highlight()
             return
         if self._current_highlighted == text_range and not forced:
             return
@@ -180,16 +195,18 @@ class ScrollableLabel(Widget):
         if self._can_highlight:
             start = max(text_range.start - self._offset, 0)
             end = max(text_range.end - self._offset, 0)
-            spans = [*self._strip_underline(self.text.spans), Span(start, end, "underline")]
-            self.text = Text(self.text.plain, overflow="ellipsis", no_wrap=True, spans=spans)
+            style = self.get_component_rich_style("scrollable-label--highlighted")
+            spans = [*self._strip_component_style(self.text.spans), Span(start, end, style)]
+            text = Text(self.text.plain, overflow="ellipsis", no_wrap=True, spans=spans)
+            self.text = text
 
-    def _strip_underline(self, spans: list[Span]) -> list[Span]:
-        return [span for span in spans if span.style != "underline"]
+    def _strip_component_style(self, spans: list[Span]) -> list[Span]:
+        return [span for span in spans if span.style != self.get_component_rich_style("scrollable-label--highlighted")]
 
-    def _remove_underline(self):
+    def _remove_highlight(self):
         self._current_highlighted = TextRange(-1, -1)
         self.text = Text(
-            self.text.plain, overflow="ellipsis", no_wrap=True, spans=self._strip_underline(self.text.spans)
+            self.text.plain, overflow="ellipsis", no_wrap=True, spans=self._strip_component_style(self.text.spans)
         )
 
     def _reset_state(self) -> None:
@@ -320,7 +337,7 @@ class ScrollableLabel(Widget):
 
         if self._current_highlighted != TextRange(-1, -1):
             self._current_highlighted = TextRange(-1, -1)
-            self._remove_underline()
+            self._remove_highlight()
 
         if self._max_scroll == -1:
             return

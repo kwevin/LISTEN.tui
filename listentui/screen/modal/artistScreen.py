@@ -7,10 +7,11 @@ from textual.containers import Center, Container, Horizontal, VerticalScroll
 from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView
 
-from listentui.listen import Artist, ArtistID, ListenClient
+from listentui.listen import Artist, ArtistID, ListenClient, SongID
 from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnSongScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
@@ -47,19 +48,16 @@ class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
     ArtistScreen SongListView {
         margin-right: 2;
     }
-    ArtistScreen CollapsibleTitle {
-        width: 100%;
-        margin-right: 1;
-    }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel"),
     ]
 
-    def __init__(self, artist_id: ArtistID, artist: Artist):
+    def __init__(self, artist_id: ArtistID, artist: Artist, favorited: dict[SongID, bool]):
         super().__init__()
         self.artist_id = artist_id
         self.artist = artist
+        self.favorited = favorited
 
     def compose(self) -> ComposeResult:
         # lazy for the win!!
@@ -77,21 +75,26 @@ class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
                             with Collapsible(title=f"{album.format_name()}\n{len(album.songs)} Songs"), Lazy(
                                 SongListView(initial_index=None)
                             ):
-                                yield from [SongItem(song) for song in album.songs]
+                                yield from [SongItem(song, self.favorited.get(song.id, False)) for song in album.songs]
 
                 if self.artist.songs_without_album:
                     with Collapsible(title=f"- No album -\n{len(self.artist.songs_without_album)} Songs"), Lazy(
                         SongListView(initial_index=None)
                     ):
-                        yield from [SongItem(song) for song in self.artist.songs_without_album]
+                        yield from [
+                            SongItem(song, self.favorited.get(song.id, False))
+                            for song in self.artist.songs_without_album
+                        ]
 
     @on(SongListView.SongSelected)
+    @work
     async def song_selected(self, event: SongListView.SongSelected) -> None:
-        client = ListenClient.get_instance()
-        favorited = False
-        if client.logged_in:
-            favorited = await client.check_favorite(event.song.id)
-        self.post_message(SpawnSongScreen(event.song.id, favorited))
+        favorited_status = await self.app.push_screen_wait(
+            await SongScreen.load_with_favorited(self.app, event.song.id, self.favorited.get(event.song.id, False))
+        )
+
+        if self.favorited.get(event.song.id, False) != favorited_status:
+            self.query_one(f"#_song-{event.song.id}", SongItem).set_favorited_state(favorited_status)
 
     @on(ListView.Highlighted)
     def child_highlighed(self, event: ListView.Highlighted) -> None:
@@ -109,7 +112,16 @@ class ArtistScreen(BaseScreen[None, ArtistID, Artist]):
         client = ListenClient.get_instance()
         artist = await app.push_screen_wait(LoadingScreen(client.artist(load_id)))
         assert artist is not None
-        return cls(load_id, artist)
+        favorited = {}
+        songs_id = []
+        for album in artist.albums or []:
+            if album.songs:
+                songs_id.extend([song.id for song in album.songs])
+        if artist.songs_without_album:
+            songs_id.extend([song.id for song in artist.songs_without_album])
+        if client.logged_in:
+            favorited = await app.push_screen_wait(LoadingScreen(client.check_favorite(songs_id)))
+        return cls(load_id, artist, favorited)
 
     def action_cancel(self) -> None:
         self.dismiss()

@@ -20,6 +20,9 @@ class MainScreen(Screen[None]):
         width: 1fr;
         height: 1fr;
     }
+    MainScreen TabbedContent {
+        padding: 1 1 0 1;
+    }
     """
     index: var[int] = var(0, init=False)
 

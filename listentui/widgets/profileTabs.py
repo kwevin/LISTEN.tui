@@ -29,25 +29,13 @@ class FeedItem(ListItem):
         width: auto;
         link-color: rgb(249, 38, 114);
     }
-    FeedItem > Widget :hover {
-        background: $boost !important;
-    }
-    FeedView FeedItem :hover {
-        background: $boost !important;
-    }
-    FeedView > FeedItem.--highlight {
-        background: $background-lighten-1;
-    }
-    FeedView:focus > FeedItem.--highlight {
-        background: $background-lighten-1;
-    }
 
     FeedItem.favorited {
-        border-left: inner red;
+        border-left: thick red;
     }
 
     FeedItem.uploaded {
-        border-left: inner green;
+        border-left: thick green;
     }
     """
 
@@ -83,18 +71,41 @@ class FeedItem(ListItem):
             self.item = item
             super().__init__()
 
-    async def _on_click(self, _: events.Click) -> None:
+    def _on_click(self, _: events.Click) -> None:
+        if not self.highlighted:
+            return
         self.post_message(self.FeedChildClicked(self))
 
 
 class FeedView(ListView):
     DEFAULT_CSS = """
     FeedView {
-        height: 100%;
-    }
-    FeedView FeedItem {
-        margin-bottom: 1;
-        background: $background-lighten-1;
+        height: auto;
+        background: $background;
+        margin-right: 1;
+        &:focus-within {
+            background-tint: $foreground 0%;
+        }
+        & > ListItem {
+            margin-bottom: 1;
+            # background-tint: $foreground 5%;
+            background: $surface;
+            &.-hovered {
+                background: $background-lighten-2;
+            }
+            
+            &.-highlight {
+                # background-tint: black 30%;
+                background-tint: $foreground 5%;
+                background: $background-lighten-1;
+            }
+        }
+        &:focus > ListItem.-highlight > Widget {
+            width: 1fr;
+            background-tint: $foreground 5%;
+            background: $background-lighten-1;
+            text-style: reverse;
+        }
     }
     """
 
@@ -169,7 +180,8 @@ class ActivityTab(ProfileTab):
         self.loading = False
 
     def compose(self) -> ComposeResult:
-        yield FeedView(*[FeedItem(feed.song, feed) for feed in self.starter if feed.song])
+        with ScrollableContainer():
+            yield FeedView(*[FeedItem(feed.song, feed) for feed in self.starter if feed.song])
 
     @on(FeedView.FeedSelected)
     @work
@@ -191,6 +203,17 @@ class ActivityTab(ProfileTab):
 
 
 class FavoritesTab(ProfileTab):
+    DEFAULT_CSS = """
+    FavoritesTab SongListView {
+    
+        margin-right: 1;
+        padding-bottom: 1;
+    }
+    FavoritesTab PageSwitcher {
+        margin-bottom: 1;
+    }
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.should_reload = True

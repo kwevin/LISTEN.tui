@@ -1,12 +1,13 @@
-from logging import getLogger
 from threading import Thread
-from typing import ClassVar, cast
+from typing import Any, ClassVar, cast
 
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import Container, Grid, Horizontal
+from textual.message import Message
+from textual.widget import Widget
 from textual.widgets import Label
 
 from listentui.data import get_song_duration
@@ -18,10 +19,52 @@ from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnAlbumScreen, SpawnSourceScreen
 from listentui.utilities import format_time_since
 from listentui.widgets.artistScrollableLabel import ArtistScrollableLabel
-from listentui.widgets.buttons import StaticButton, ToggleButton
+from listentui.widgets.buttons import StaticButton, ToggleButton, VolumeButton
 from listentui.widgets.durationProgressBar import DurationProgressBar
 from listentui.widgets.mpvThread import MPVThread, PreviewStatus, PreviewType
 from listentui.widgets.scrollableLabel import ScrollableLabel
+
+
+class MultiButton(Widget):
+    DEFAULT_CSS = """
+    MultiButton {
+        min-width: 13;
+        width: auto;
+    }
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._volume_mode = False
+
+    class Preview(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
+    def compose(self) -> ComposeResult:
+        if not self._volume_mode:
+            yield StaticButton("Preview", id="preview")
+        else:
+            yield VolumeButton(preview_mode=True)
+
+    @on(StaticButton.Pressed, "#preview")
+    async def _preview(self) -> None:
+        self.post_message(self.Preview())
+        self.disabled = True
+        self.set_loading(True)
+
+    @work
+    async def to_volume_mode(self, volume: int) -> None:
+        self._volume_mode = True
+        self.disabled = False
+        self.set_loading(False)
+        await self.recompose()
+        self.query_one(VolumeButton).volume = volume
+
+    @work
+    async def to_preview_mode(self) -> None:
+        self._volume_mode = False
+        await self.recompose()
 
 
 class SongScreen(BaseScreen[bool, SongID, Song]):
@@ -44,9 +87,9 @@ class SongScreen(BaseScreen[bool, SongID, Song]):
         grid-rows: 1 3 2 1fr;
         padding: 0 2;
         width: 70%;
-        height: 14;
+        height: 15;
         border: thick $background 80%;
-        background: $surface;
+        background: $background-lighten-1;
         border-subtitle-color: red;
         border-title-color: red;
         border-title-align: center;
@@ -128,7 +171,7 @@ class SongScreen(BaseScreen[bool, SongID, Song]):
             )
             yield Label(f"Time played: {self.song.played}", id="time_played")
             with Horizontal(id="horizontal"):
-                yield StaticButton("Preview", id="preview")
+                yield MultiButton()
                 yield DurationProgressBar(stop=True, total=0, pause_on_end=True)
                 yield ToggleButton("Favorite", "Favorited", check_user=True, hidden=True, id="favorite")
                 yield StaticButton("Request", check_user=True, hidden=True, id="request")
@@ -164,6 +207,13 @@ class SongScreen(BaseScreen[bool, SongID, Song]):
         self.query_one("#favorite", ToggleButton).set_toggle_state(self.is_favorited)
 
     @classmethod
+    async def load(cls, app: App, load_id: SongID):
+        client = ListenClient.get_instance()
+        res = await app.push_screen_wait(LoadingScreen(client.song(load_id)))
+        assert res is not None
+        return cls(load_id, res, False)
+
+    @classmethod
     async def load_with_favorited(cls, app: App, load_id: SongID, favorited: bool = False):
         client = ListenClient.get_instance()
         res = await app.push_screen_wait(LoadingScreen(client.song(load_id)))
@@ -174,32 +224,31 @@ class SongScreen(BaseScreen[bool, SongID, Song]):
         Thread(target=MPVThread.terminate_preview, name="terminate_preview", daemon=True).start()
         self.dismiss(self.is_favorited)
 
-    @on(StaticButton.Pressed, "#preview")
+    @on(MultiButton.Preview)
     def preview(self) -> None:
         song = cast(Song, self.song)
         if not song.snippet:
             self.notify("No snippet to preview", severity="warning", title="Preview")
             return
-        self.query_one("#preview", StaticButton).disabled = True
-        self.query_one("#preview", StaticButton).set_loading(True)
         MPVThread.preview(song.snippet, self.handle_preview_status)
 
     def handle_preview_status(self, data: PreviewStatus):
         try:
             progress = self.query_one(DurationProgressBar)
+            multibutton = self.query_one(MultiButton)
             if data.state == PreviewType.LOCKED:
                 self.notify("Cannot preview two songs at the same time", title="Preview", severity="warning")
             elif data.state == PreviewType.UNABLE:
                 self.notify("Unable to play preview :(", title="Preview", severity="warning")
             elif data.state == PreviewType.PLAYING:
-                self.query_one("#preview", StaticButton).set_loading(False)
+                multibutton.to_volume_mode(data.other)
                 progress.reset()
                 progress.resume()
             elif data.state == PreviewType.DATA:
                 cache = cast(MPVThread.DemuxerCacheState, data.other)
                 progress.update_total(round(cache.cache_end))
             elif data.state == PreviewType.DONE:
-                self.query_one("#preview", StaticButton).disabled = False
+                multibutton.to_preview_mode()
             elif data.state == PreviewType.ERROR:
                 self.notify("An error has occured", title="Preview", severity="warning")
             else:

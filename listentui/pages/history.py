@@ -97,6 +97,8 @@ class HistoryPage(BasePage):
             prompt="Filter by Time",
         )
 
+        self._table_last_selected = self.table.cursor_coordinate
+
         self.table.add_column("Id")
         self.table.add_column("Track", width=30)
         self.table.add_column("Requested By")
@@ -201,6 +203,9 @@ class HistoryPage(BasePage):
         self.history_result = await self.client.history(offset=1)
 
     def on_data_table_cell_selected(self, cell: DataTable.CellSelected):
+        if self.table.cursor_coordinate != self._table_last_selected:
+            self._table_last_selected = self.table.cursor_coordinate
+            return
         if not cell.value:
             return
         if cell.value == "Load More":
@@ -259,15 +264,10 @@ class HistoryPage(BasePage):
         if not song.artists:
             return
 
-        if len(song.artists) == 1:
+        if len(song.artists) == 1 and song.artists[0].characters is None:
             self.post_message(SpawnArtistScreen(song.artists[0].id))
         else:
-            options = song.format_artists_list()
-            if not options:
-                return
-            result = await self.app.push_screen_wait(SelectionScreen(options))
-            if result is not None:
-                self.post_message(SpawnArtistScreen(song.artists[result].id))
+            self.app.push_screen(SelectionScreen(song))
 
     def show_album(self, rowkey: RowKey) -> None:
         song = self.get_song(rowkey)

@@ -203,6 +203,16 @@ class Player(Widget):
             self.is_alive = state
             self.last_heartbeat = last_heartbeat
 
+    class PlayerSetVolume(Message):
+        def __init__(self, volume: int) -> None:
+            super().__init__()
+            self.volume = volume
+
+    class PreviewSetVolume(Message):
+        def __init__(self, volume: int) -> None:
+            super().__init__()
+            self.volume = volume
+
     def __init__(self) -> None:
         super().__init__()
         self._log = getLogger(__name__)
@@ -506,6 +516,7 @@ class Player(Widget):
                 type=presense_type.value,
             )
             self._log.debug(pretty_repr(res))
+            self.query_one("#rpc", Label).update("[green]RPC[/]")
         except (PipeClosed, BrokenPipeError, ResponseTimeout, asyncio.CancelledError, TimeoutError):
             self.presense_connected = False
             self.query_one("#rpc", Label).update("[red]RPC[/]")
@@ -514,10 +525,13 @@ class Player(Widget):
             self.query_one("#rpc", Label).update("[red]RPC[/]")
             self._log.exception("Something went wrong with updating discord presense")
 
-    # async def on_unmount(self) -> None:
-    #     if self.presense_connected:
-    #         with contextlib.suppress(Exception):
-    #             await self.presence.clear()
+    async def on_unmount(self) -> None:
+        if self.presense_connected:
+            try:
+                async with asyncio.timeout_at(asyncio.get_event_loop().time() + 5):
+                    await self.presence.clear()
+            except TimeoutError:
+                return
 
     def on_hide(self) -> None:
         self.on_display = False

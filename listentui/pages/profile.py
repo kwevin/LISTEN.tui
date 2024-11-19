@@ -19,6 +19,7 @@ class ProfilePage(BasePage):
 
     #bio {
         row-span: 2;
+        background: $background;
     }
 
     #stats {

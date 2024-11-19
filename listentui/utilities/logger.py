@@ -2,7 +2,7 @@
 from datetime import datetime
 from logging import Formatter, LogRecord
 from queue import Queue
-from threading import Thread
+from threading import Event, Thread
 from time import sleep
 from typing import Any, ClassVar
 
@@ -21,28 +21,24 @@ class RichLogExtended(RichLog):
         Binding("ctrl+d", "dump", "Dump Logs"),
     ]
     queue: Queue[tuple[LogRecord | str, ConsoleRenderable | str]] = Queue(maxsize=-1)
-    _thread: Thread | None = None
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, max_lines=1000, highlight=True, markup=True, wrap=True, **kwargs)
         self.raw: list[str] = []
         self.formatter = Formatter("(%(asctime)s)[%(levelname)s] %(name)s: %(message)s", "%H:%M:%S")
-        self.stopped = False
+        self.thread = Thread(target=self.empty_queue, daemon=True)
+        self.stopped = Event()
 
     def action_clear(self) -> None:
         self.clear()
 
     def on_mount(self) -> None:
-        if not RichLogExtended._thread:
-            RichLogExtended._thread = Thread(target=self.empty_queue, daemon=True)
-        RichLogExtended._thread.start()
+        self.thread.start()
 
     def on_unmount(self) -> None:
-        if RichLogExtended._thread:
-            self.stopped = True
-            RichLogExtended.queue.put_nowait(("STOPPED", "STOPPED"))
-            RichLogExtended._thread.join()
-        RichLogExtended._thread = None
+        self.stopped.set()
+        RichLogExtended.queue.put_nowait(("STOPPED", "STOPPED"))
+        self.thread.join(1)
 
     def action_toggle_autoscroll(self) -> None:
         self.auto_scroll = not self.auto_scroll
@@ -51,14 +47,13 @@ class RichLogExtended(RichLog):
         self.notify(f"Autoscroll {'enabled' if self.auto_scroll else 'disabled'}")
 
     def empty_queue(self) -> None:
-        while not self.stopped:
+        while not self.stopped.is_set():
             raw, renderable = RichLogExtended.queue.get()
             if isinstance(raw, str):
                 self.raw.append(raw)
             else:
                 self.raw.append(self.formatter.format(raw))
             self.app.call_from_thread(self.write, renderable, expand=True)
-            sleep(0.5)
 
     def action_dump(self) -> None:
         with open(f"{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.log", "w+", encoding="utf-8") as f:

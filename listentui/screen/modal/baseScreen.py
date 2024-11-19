@@ -20,11 +20,8 @@ class LoadingScreen(ModalScreen[ScreenInterfaceType]):
         align: center middle;
     }
     LoadingScreen #box {
-        width: 100%;
-        margin: 4 4 6 4;
-        height: 100%;
-        background: $surface;
-        border: thick $background 80%;
+        width: 11;
+        height: 1;
     }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -36,13 +33,13 @@ class LoadingScreen(ModalScreen[ScreenInterfaceType]):
         self.awaitable = awaitable
 
     def compose(self) -> ComposeResult:
-        yield EscButton()
         yield Container(id="box")
 
     @work
     async def on_mount(self) -> None:
         self.query_one("#box", Container).set_loading(True)
-        self.dismiss(await self.awaitable)
+        result = await self.awaitable
+        self.dismiss(result)
 
     def action_cancel(self) -> None:
         self.dismiss()
@@ -51,7 +48,7 @@ class LoadingScreen(ModalScreen[ScreenInterfaceType]):
 class BaseScreen(Generic[ScreenResultType, ScreenInterfaceID, ScreenInterfaceType], ModalScreen[ScreenResultType]):
     def action_cancel(self) -> None: ...
 
-    def on_click(self) -> None:
+    async def on_click(self) -> None:
         first_depth = self.query("Screen > *")
         if not any(widget.is_mouse_over for widget in first_depth):
             self.action_cancel()

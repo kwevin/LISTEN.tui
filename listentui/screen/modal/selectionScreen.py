@@ -6,11 +6,12 @@ from textual.binding import BindingType
 from textual.containers import Center, Container, Grid
 from textual.widgets import Button, Label
 
+from listentui.listen.interface import Song
 from listentui.screen.modal.baseScreen import BaseScreen
-from listentui.screen.modal.buttons import OptionButton
+from listentui.widgets.artistScrollableLabel import ArtistCharacterLabel
 
 
-class SelectionScreen(BaseScreen[int | None, None, None]):
+class SelectionScreen(BaseScreen[None, None, None]):
     """Screen for confirming actions"""
 
     DEFAULT_CSS = """
@@ -18,7 +19,7 @@ class SelectionScreen(BaseScreen[int | None, None, None]):
         align: center middle;
     }
     SelectionScreen Container {
-        width: auto;
+        width: 60;
         height: auto;
         border: thick $background 80%;
         background: $surface;
@@ -29,63 +30,35 @@ class SelectionScreen(BaseScreen[int | None, None, None]):
         content-align: center middle;
         margin-left: 1;
     }
-    SelectionScreen Grid {
-        grid-size: 2;
-        grid-gutter: 1 2;
-        padding: 1 1;
-        width: 60;
-        height: auto;
-    }
-    SelectionScreen OptionButton {
-        width: 100%;
+    SelectionScreen ArtistCharacterLabel {
+        width: 1fr;
+        align: center middle;
+        margin: 1 1 0 1;
     }
     SelectionScreen Center {
         width: 100%;
         height: auto;
     }
+    SelectionScreen #cancel {
+        margin-top: 1;
+    }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape,n,N", "cancel"),
-        ("left,h", "focus_previous"),
-        ("right,l", "focus_next"),
-        ("up,k", "focus_up"),
-        ("down,j", "focus_down"),
     ]
 
-    def __init__(self, options: list[str]):
+    def __init__(self, song: Song):
         super().__init__()
-        self.options = options
+        self.song = song
 
     def compose(self) -> ComposeResult:
         with Container():
-            yield Label("Select one")
-            with Grid():
-                for idx, option in enumerate(self.options):
-                    yield OptionButton(self.clamp(f"[{idx + 1}] {option}"), index=idx)
+            yield Label("Artists")
+            for artist_slice in self.song.get_artist_list():
+                yield ArtistCharacterLabel(artist_slice)
             with Center():
                 yield Button("[N] Cancel", variant="primary", id="cancel")
 
     @on(Button.Pressed, "#cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)
-
-    def action_focus_up(self) -> None:
-        # what the fuck am i doing
-        self.focus_previous()
-        self.focus_previous()
-
-    def action_focus_down(self) -> None:
-        # if it works it works
-        self.focus_next()
-        self.focus_next()
-
-    def on_option_button_selected(self, event: OptionButton.Selected) -> None:
-        self.dismiss(event.index)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key.isdigit() and event.key != "0" and int(event.key) <= len(self.options):
-            self.dismiss(int(event.key) - 1)
-
-    def clamp(self, text: str) -> str:
-        min_len = 24
-        return text if len(text) <= min_len else text[: min_len - 1] + "…"

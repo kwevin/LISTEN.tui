@@ -1,10 +1,14 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Callable
 
 from rich.text import Text
 from textual.reactive import var
 from textual.widgets import Button
 
+from listentui.data.config import Config
 from listentui.listen import ListenClient
+from listentui.widgets.player import Player
 
 
 class StaticButton(Button):
@@ -76,3 +80,61 @@ class ToggleButton(StaticButton):
 
     def update_default_label(self, label: str | Text | None) -> None:
         self._default = label
+
+
+class VolumeButton(ToggleButton):
+    volume: var[int] = var(Config.get_config().persistant.volume, init=False)
+    muted: var[bool] = var(False)
+
+    def __init__(self, id: str | None = None, preview_mode: bool = False):  # noqa: A002
+        super().__init__(f"{Config.get_config().persistant.volume}", "Muted", id=id)
+        self._pre_mode = preview_mode
+
+    def watch_volume(self, new: int) -> None:
+        self.label = f"{new}"
+        self.update_default_label(self.label)
+        if self._pre_mode:
+            self.post_message(Player.PreviewSetVolume(new))
+        else:
+            self.post_message(Player.PlayerSetVolume(new))
+        if not self._pre_mode:
+            Config.get_config().persistant.volume = new
+
+    def watch_muted(self, new: bool) -> None:
+        self.set_toggle_state(new)
+        if self._pre_mode:
+            if new:
+                self.post_message(Player.PreviewSetVolume(0))
+            else:
+                self.post_message(Player.PreviewSetVolume(self.volume))
+        elif new:
+            self.post_message(Player.PlayerSetVolume(0))
+        else:
+            self.post_message(Player.PlayerSetVolume(self.volume))
+        self.refresh_bindings()
+
+    def validate_volume(self, volume: int) -> int:
+        min_volume = 0
+        max_volume = 100
+        if volume < min_volume:
+            volume = 0
+        if volume > max_volume:
+            volume = 100
+        return volume
+
+    def on_button_pressed(self) -> None:
+        self.toggle()
+        self.set_toggle_state(self.muted)
+
+    def on_mouse_scroll_down(self) -> None:
+        if self.muted:
+            return
+        self.volume -= 1
+
+    def on_mouse_scroll_up(self) -> None:
+        if self.muted:
+            return
+        self.volume += 1
+
+    def toggle(self) -> None:
+        self.muted = not self.muted

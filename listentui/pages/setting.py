@@ -23,7 +23,7 @@ DOC: dict[str, str] = {
     "client.username": "Your login username",
     "client.password": "Your login password",
     "presence.enable": "Enable discord rich presence",
-    "presence.type": "Type of presence (0 or 2 OR 0-5 (you can try))",
+    "presence.type": 'Type of presence \n0 For "Watching..."\n 2 For "Listening..."\n OR 0-5 (you can try))',
     "presence.default_placeholder": "Text to add to achieve minimum length requirement (must be at least 2 characters)",
     "presence.use_fallback": "Whether to use a fallback image when no image is present",
     "presence.fallback": "Fallback to use when there is no image present ('default' for LISTEN.moe's icon)",
@@ -389,7 +389,7 @@ class SettingPage(BasePage):
     
     SettingPage #apply {
         align-horizontal: right;
-        margin-right: 2;
+        margin: 0 2 1 0;
         layers: above;
         dock: bottom;
     }
@@ -418,7 +418,7 @@ class SettingPage(BasePage):
     def compose(self) -> ComposeResult:
         yield Label("• For more information, hover over the label", id="setting-info")
         for catagory in self.config:
-            if catagory == "persistant" and not self.config["advance"]["stats_for_nerd"]:
+            if catagory != "persistant" and not self.config["advance"]["stats_for_nerd"]:
                 continue
             with Collapsible(title=catagory.capitalize()):
                 for option in self.config[catagory]:
@@ -434,7 +434,7 @@ class SettingPage(BasePage):
                         yield GenericField(setting)
                     elif isinstance(field, int):
                         yield GenericField(setting, is_int=True)
-        yield Button("Apply", id="apply")
+        yield Button("Apply", id="apply", variant="success")
 
     def on_mount(self) -> None:
         for widget in self.query(Generic):

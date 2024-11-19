@@ -14,15 +14,7 @@ class VanityBar(Widget):
         height: auto;
         padding-bottom: 1;
         
-        #listener {
-            height: 1;
-        }
-        
-        #event {
-            height: 1;
-        }
-
-        #requester {
+        #listener, #event, #requester {
             height: 1;
         }
         

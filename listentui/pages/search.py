@@ -24,8 +24,11 @@ class SearchPage(BasePage):
         align: center middle;
 
         & SongListView {
-            height: auto;
-            margin: 1 1 2 1;
+            margin: 1 1 1 1;
+        }
+        
+        & PageSwitcher {
+            margin-bottom: 1;
         }
         
         & Horizontal {
@@ -43,7 +46,17 @@ class SearchPage(BasePage):
         }
         #sfilter {
             min-width: 17;
-            max-width: 23
+            max-width: 24;
+            overflow: hidden hidden;
+        }
+    }
+    OptionList {
+        & > .option-list--option-highlighted {
+            background: $surface;
+        }
+        &:focus > .option-list--option-highlighted {
+            background: $surface;
+            background-tint: $foreground 5%;
         }
     }
     """
@@ -66,6 +79,7 @@ class SearchPage(BasePage):
             [("20", 20), ("50", 50), ("100", 100), ("200", 200)], allow_blank=False, value=20, id="svalue"
         )
         self.filter: SelectionList[bool] = SelectionList(*[("Favorited Only", True)], id="sfilter")
+        # self.filter.can_focus = False
         self.search_result_copy: list[SongID] = []
         self.favorited: dict[SongID, bool] = {}
 

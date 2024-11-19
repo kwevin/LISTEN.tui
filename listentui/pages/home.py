@@ -11,56 +11,9 @@ from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ListenWsData
 from listentui.pages.base import BasePage
-from listentui.widgets.buttons import ToggleButton
+from listentui.widgets.buttons import ToggleButton, VolumeButton
 from listentui.widgets.mpvThread import MPVThread
 from listentui.widgets.player import Player
-
-
-class VolumeButton(ToggleButton):
-    volume: var[int] = var(Config.get_config().persistant.volume, init=False)
-    muted: var[bool] = var(False)
-
-    def __init__(self, id: str | None = None):  # noqa: A002
-        super().__init__(f"{Config.get_config().persistant.volume}", "Muted", id=id)
-
-    def watch_volume(self, new: int) -> None:
-        self.label = f"{new}"
-        self.update_default_label(self.label)
-        self.app.query_one(Player).player.set_volume(new)
-        Config.get_config().persistant.volume = new
-
-    def watch_muted(self, new: bool) -> None:
-        self.set_toggle_state(new)
-        self.app.query_one(Player).player.set_volume(0) if new else self.app.query_one(Player).player.set_volume(
-            self.volume
-        )
-        self.refresh_bindings()
-
-    def validate_volume(self, volume: int) -> int:
-        min_volume = 0
-        max_volume = 100
-        if volume < min_volume:
-            volume = 0
-        if volume > max_volume:
-            volume = 100
-        return volume
-
-    def on_button_pressed(self) -> None:
-        self.toggle()
-        self.set_toggle_state(self.muted)
-
-    def on_mouse_scroll_down(self) -> None:
-        if self.muted:
-            return
-        self.volume -= 1
-
-    def on_mouse_scroll_up(self) -> None:
-        if self.muted:
-            return
-        self.volume += 1
-
-    def toggle(self) -> None:
-        self.muted = not self.muted
 
 
 class HomePage(BasePage):

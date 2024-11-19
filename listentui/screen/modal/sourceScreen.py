@@ -7,10 +7,11 @@ from textual.containers import Center, Container, VerticalScroll
 from textual.lazy import Lazy
 from textual.widgets import Collapsible, Label, ListView, Markdown
 
-from listentui.listen import Album, AlbumID, ListenClient, Song, Source, SourceID
+from listentui.listen import Album, AlbumID, ListenClient, Song, SongID, Source, SourceID
 from listentui.screen.modal.baseScreen import BaseScreen, LoadingScreen
 from listentui.screen.modal.buttons import EscButton
 from listentui.screen.modal.messages import SpawnArtistScreen, SpawnSongScreen
+from listentui.screen.modal.songScreen import SongScreen
 from listentui.widgets.songListView import SongItem, SongListView
 
 
@@ -42,19 +43,16 @@ class SourceScreen(BaseScreen[None, SourceID, Source]):
     SourceScreen SongListView {
         margin-right: 2;
     }
-    SourceScreen CollapsibleTitle {
-        width: 100%;
-        margin-right: 1;
-    }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         ("escape", "cancel"),
     ]
 
-    def __init__(self, source_id: SourceID, source: Source):
+    def __init__(self, source_id: SourceID, source: Source, favorited: dict[SongID, bool]):
         super().__init__()
         self.source_id = source_id
         self.source = source
+        self.favorited = favorited
 
     def compose(self) -> ComposeResult:
         yield EscButton()
@@ -73,14 +71,23 @@ class SourceScreen(BaseScreen[None, SourceID, Source]):
                     for album_id, songs in id_to_song.items():
                         album = id_to_album[album_id]
                         yield Collapsible(
-                            Lazy(SongListView(*[SongItem(song) for song in songs], initial_index=None)),
+                            Lazy(
+                                SongListView(
+                                    *[SongItem(song, self.favorited.get(song.id, False)) for song in songs],
+                                    initial_index=None,
+                                )
+                            ),
                             title=f"{album.format_name()}\n{len(songs)} Songs",
                         )
                 if self.source.songs_without_album:
                     yield Collapsible(
                         Lazy(
                             SongListView(
-                                *[SongItem(song) for song in self.source.songs_without_album], initial_index=None
+                                *[
+                                    SongItem(song, self.favorited.get(song.id, False))
+                                    for song in self.source.songs_without_album
+                                ],
+                                initial_index=None,
                             )
                         ),
                         title=f"- No source -\n{len(self.source.songs_without_album)} Songs",
@@ -106,8 +113,14 @@ class SourceScreen(BaseScreen[None, SourceID, Source]):
         return albums
 
     @on(SongListView.SongSelected)
+    @work
     async def song_selected(self, event: SongListView.SongSelected) -> None:
-        self.post_message(SpawnSongScreen(event.song.id))
+        favorited_status = await self.app.push_screen_wait(
+            await SongScreen.load_with_favorited(self.app, event.song.id, self.favorited.get(event.song.id, False))
+        )
+
+        if self.favorited.get(event.song.id, False) != favorited_status:
+            self.query_one(f"#_song-{event.song.id}", SongItem).set_favorited_state(favorited_status)
 
     @on(ListView.Highlighted)
     def child_highlighed(self, event: ListView.Highlighted) -> None:
@@ -126,6 +139,12 @@ class SourceScreen(BaseScreen[None, SourceID, Source]):
         client = ListenClient.get_instance()
         res = await app.push_screen_wait(LoadingScreen(client.source(load_id)))
         assert res is not None
+        favorited = {}
+        if client.logged_in and res.songs:
+            favorited.update(
+                await app.push_screen_wait(LoadingScreen(client.check_favorite([song.id for song in res.songs])))
+            )
+        return cls(load_id, res, favorited)
         return cls(load_id, res)
 
     def action_cancel(self) -> None:
