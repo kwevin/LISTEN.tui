@@ -13,11 +13,11 @@ from string import Template
 from typing import Any, cast
 
 import pytz
-import websockets.client as websockets
+import websockets.asyncio.client as websockets
 from pypresence import AioPresence, DiscordNotFound  # type: ignore
 from pypresence.exceptions import PipeClosed, ResponseTimeout
 from pypresence.payloads import Payload  # type: ignore
-from rich.pretty import pprint, pretty_repr
+from rich.pretty import pretty_repr
 from textual import on, work
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -28,7 +28,6 @@ from textual.widgets import Label
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from listentui import __NO_MPV__
-from listentui.data import get_song_duration
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import ListenWsData, Song, SongID
@@ -220,7 +219,7 @@ class Player(Widget):
         self.song: Song | None = None
         self.is_first_song = True
         self._song_count = 0  # use for calculating first song only
-        self.progress_bar = DurationProgressBar(stop=True, pause_on_end=True)
+        self.progress_bar = DurationProgressBar(stop=True, pause_on_end=False)
         self.player = MPVThread(self)
         self.retries = 0
         self.websocket_time = 0

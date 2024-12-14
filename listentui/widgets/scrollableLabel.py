@@ -33,7 +33,7 @@ class TextRange:
 
 
 class ScrollableLabel(Widget):
-    COMPONENT_CLASSES: ClassVar[set[str]] = {"scrollable-label--highlighted"}
+    COMPONENT_CLASSES: ClassVar[set[str]] = {"scrollable-label--highlighted", "scrollable-label--separator"}
     DEFAULT_CSS = """
     ScrollableLabel {
         width: 100%;
@@ -43,6 +43,11 @@ class ScrollableLabel(Widget):
             text-style: bold not underline;
             background: $link-background-hover;
             color: $link-color;
+        }
+
+        & > .scrollable-label--separator {
+            color: gray;
+            background: initial;
         }
     }
     """
@@ -156,7 +161,7 @@ class ScrollableLabel(Widget):
         self._calculate_scrollable_amount()
         self._highlight_under_mouse()
 
-    def _watch__offset(self, value: int) -> None:
+    def _watch__offset(self, old: int, value: int) -> None:
         self._cell_offset = self._get_cell_offset(value)
         default = self._default()
         text = default.plain
@@ -165,7 +170,10 @@ class ScrollableLabel(Widget):
         new_spans = [
             Span(max(span.start - self._offset, 0), max(span.end - self._offset, 0), span.style) for span in spans
         ]
-        self.text = Text(new_plain, overflow="ellipsis", no_wrap=True, spans=new_spans)
+        overflow = "ellipsis"
+        if value == self._max_scroll:
+            overflow = "ignore"
+        self.text = Text(new_plain, overflow=overflow, no_wrap=True, spans=new_spans)
         self._highlight_under_mouse(forced=True)
 
     def _watch__mouse_pos(self, _: int) -> None:
@@ -197,7 +205,10 @@ class ScrollableLabel(Widget):
             end = max(text_range.end - self._offset, 0)
             style = self.get_component_rich_style("scrollable-label--highlighted")
             spans = [*self._strip_component_style(self.text.spans), Span(start, end, style)]
-            text = Text(self.text.plain, overflow="ellipsis", no_wrap=True, spans=spans)
+            overflow = "ellipsis"
+            if self._offset == self._max_scroll:
+                overflow = "ignore"
+            text = Text(self.text.plain, overflow=overflow, no_wrap=True, spans=spans)
             self.text = text
 
     def _strip_component_style(self, spans: list[Span]) -> list[Span]:
@@ -270,7 +281,11 @@ class ScrollableLabel(Widget):
                 flatten_texts.append(Text(" ").join(text))
             else:
                 flatten_texts.append(text)
-        return sep.join(flatten_texts)
+        text = sep.join(flatten_texts)
+        text.highlight_words(
+            sep.plain, style=self.get_component_rich_style("scrollable-label--separator", partial=True)
+        )
+        return text
 
     def _update_cell_map(self, text: Text) -> None:
         self._cell_map = {char: cached_cell_len(char) for char in text.plain}

@@ -30,6 +30,7 @@ class MultiButton(Widget):
     MultiButton {
         min-width: 13;
         width: auto;
+        height: auto;
     }
     """
 

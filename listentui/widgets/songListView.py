@@ -105,20 +105,36 @@ class AdvSongItem(ListItem):
     }
     AdvSongItem #alb-only  {
         height: auto;
-        grid-size: 2 2;
-        grid-columns: 1fr 2fr;
+        grid-size: 3 2;
+        grid-columns: 1fr 1fr 1fr;
         grid-rows: 1;
         grid-gutter: 0 1;
         margin-right: 1;
+
+        & > Label {
+            column-span: 2;
+        }
+
+        & > #item-album {
+            column-span: 2;
+        }
     }
 
     AdvSongItem #source-only  {
         height: auto;
-        grid-size: 2 2;
-        grid-columns: 1fr 2fr;
+        grid-size: 3 2;
+        grid-columns: 1fr 1fr 1fr;
         grid-rows: 1;
         grid-gutter: 0 1;
         margin-right: 1;
+
+        & > Label {
+            column-span: 2;
+        }
+
+        & > #item-source {
+            column-span: 2;
+        }
     }
 
     AdvSongItem #alb-source {
@@ -238,19 +254,15 @@ class SongListView(ListView):
     SongListView {
         height: auto;
         background: $background;
-        &:focus-within {
-            background-tint: $foreground 0%;
-        }
         & > ListItem {
             margin-bottom: 1;
-            # background-tint: $foreground 5%;
             background: $surface;
+            width: 1fr;
             &.-hovered {
                 background: $background-lighten-2;
             }
             
             &.-highlight {
-                # background-tint: black 30%;
                 background-tint: $foreground 5%;
                 background: $background-lighten-1;
             }
@@ -259,11 +271,13 @@ class SongListView(ListView):
                 margin-bottom: 0;
             }
         }
-        &:focus > ListItem.-highlight > Widget {
-            width: 1fr;
-            background-tint: $foreground 5%;
-            background: $background-lighten-1;
-            text-style: reverse;
+        &:focus {
+            background-tint: $foreground 0%;
+            & > ListItem.-highlight {
+                background-tint: $foreground 5%;
+                background: $background-lighten-1;
+                text-style: reverse;
+            }
         }
     }
     """

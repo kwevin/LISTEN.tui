@@ -23,7 +23,7 @@ class CharacterScreen(BaseScreen[None, CharacterID, Character]):
     }
     CharacterScreen #box {
         width: 100%;
-        margin: 4 4 6 4;
+        margin: 2 4 2 4;
         height: 100%;
         border: thick $background 80%;
         background: $surface;

@@ -76,7 +76,7 @@ class MPVWatcher(Thread):
         return not self.player.player.core_shutdown
 
     def is_not_playing(self) -> bool:
-        return bool(self.player.core_idle is True and self.player.paused is False)
+        return self.player.core_idle is True and self.player.paused is False
 
     def dispatch_restart(self) -> None:
         self.retries += 1

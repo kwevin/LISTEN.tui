@@ -12,7 +12,7 @@ from textual.widgets import Button, DataTable, Input, Label, ProgressBar, RichLo
 from listentui.data import _duration_lookup, _save_duration_map
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import SongID
-from listentui.widgets.minimal_input import MinimalInput
+from listentui.widgets.minimalInput import MinimalInput
 
 
 class SetScreen(ModalScreen[int]):

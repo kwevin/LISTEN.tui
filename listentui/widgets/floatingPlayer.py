@@ -1,7 +1,10 @@
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Container
+from textual.containers import Middle
+from textual.css.query import NoMatches
+from textual.dom import NoScreen
 from textual.message import Message
+from textual.widget import Widget
 
 from listentui.listen.interface import ListenWsData, Song
 from listentui.widgets.songContainer import SongContainer
@@ -17,17 +20,17 @@ class HideFloatingPlayer(Message):
         super().__init__()
 
 
-class FloatingPlayer(Container):
+class FloatingPlayer(Widget):
     # all the important is because I need to rewrite a whole lot of css to make sure it doesnt touch this Widget
     DEFAULT_CSS = """
     FloatingPlayer {
         layer: floating_player;
-        border-left: heavy $primary;
+        border: round $primary;
         dock: top;
         display: none;
         background: $background-lighten-1;
-        height: 2 !important;
-        width: 20 !important;
+        height: 4 !important;
+        width: 32 !important;
         offset: 2 1 !important;
         padding: 0 0 !important;
         align: left top !important;
@@ -47,7 +50,8 @@ class FloatingPlayer(Container):
         self.mouse_relative: tuple[int, int] = (0, 0)
 
     def compose(self) -> ComposeResult:
-        yield SongContainer(self.song)
+        with Middle():
+            yield SongContainer(self.song)
 
     def on_mount(self) -> None:
         screen_layers = list(self.screen.styles.layers)
@@ -84,6 +88,13 @@ class FloatingPlayer(Container):
 
     def hide(self) -> None:
         self.styles.display = "none"
+
+    async def on_hide(self) -> None:
+        try:
+            if self.screen.id == "MainScreen":
+                return
+        except NoScreen:
+            await self.remove()
 
     def on_unmount(self) -> None:
         self.app.post_message(ShowFloatingPlayer())

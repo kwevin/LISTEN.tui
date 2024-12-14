@@ -13,7 +13,7 @@ from textual.validation import Number
 from textual.widget import Widget
 from textual.widgets import Label, Static
 
-from listentui.widgets.minimal_input import MinimalInput
+from listentui.widgets.minimalInput import MinimalInput
 
 
 class PageNavigationButton(Static, can_focus=True):

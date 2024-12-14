@@ -65,6 +65,7 @@ class SearchPage(BasePage):
         Binding("ctrl+q", "random", "Request A Random Searched Song"),
         Binding("ctrl+r", "random_favorited", "Request A Random Favorited Song"),
         Binding("ctrl+t", "toggle_filter", "Toggle Favorite Filter"),
+        Binding("ctrl+s", "force_search", "Force Search", show=False),
     ]
 
     def __init__(self) -> None:
@@ -269,3 +270,6 @@ class SearchPage(BasePage):
 
     def remove_loading(self) -> None:
         self.query_one("#list_view_main").set_loading(False)
+
+    def action_force_search(self) -> None:
+        self.search(True)

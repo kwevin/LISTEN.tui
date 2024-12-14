@@ -27,7 +27,7 @@ class MainScreen(Screen[None]):
     index: var[int] = var(0, init=False)
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(id="MainScreen")
 
     def compose(self) -> ComposeResult:
         with TabbedContent(id="topbar"):

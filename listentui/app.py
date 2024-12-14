@@ -7,6 +7,7 @@ from logging import getLogger
 
 from textual import on, work
 from textual.app import App
+from textual.css.query import NoMatches
 
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
@@ -27,6 +28,7 @@ from listentui.screen.modal.messages import (
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.screen.modal.sourceScreen import SourceScreen
 from listentui.utilities import get_root
+from listentui.widgets.floatingPlayer import FloatingPlayer, HideFloatingPlayer, ShowFloatingPlayer
 from listentui.widgets.player import MPVThread, Player
 
 
@@ -60,11 +62,11 @@ class ListentuiApp(App[str]):
         Config.get_config().save()
         self.exit()
         # i give up, it freezes somewhere here
-        try:
-            async with asyncio.timeout_at(asyncio.get_event_loop().time() + 10):
-                await self.terminate_components()
-        except asyncio.TimeoutError:
-            sys.exit(1)
+        # try:
+        #     async with asyncio.timeout_at(asyncio.get_event_loop().time() + 10):
+        #         await self.terminate_components()
+        # except asyncio.TimeoutError:
+        #     sys.exit(1)
 
     def action_handle_url(self, url: str) -> None:
         self.open_url(url, new_tab=True)
