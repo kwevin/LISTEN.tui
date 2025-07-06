@@ -1,15 +1,17 @@
 from datetime import datetime, timedelta
-from typing import ClassVar, Sequence
+from typing import ClassVar
 
-from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
+from textual.color import Color
 from textual.containers import Horizontal
+from textual.content import Content
 from textual.coordinate import Coordinate
 from textual.fuzzy import Matcher
 from textual.reactive import var
+from textual.style import Style
 from textual.types import NoSelection
 from textual.widgets import DataTable, Input, Label, Select
 from textual.widgets.data_table import RowKey
@@ -25,7 +27,7 @@ from listentui.utilities import format_time_since, get_root
 
 
 class MarkupMatcher(Matcher):
-    def highlight(self, candidate: str) -> Text:
+    def highlight(self, candidate: str) -> Content:
         """Highlight the candidate with the fuzzy match.
 
         Args:
@@ -34,24 +36,22 @@ class MarkupMatcher(Matcher):
         Returns:
             A [rich.text.Text][`Text`] object with highlighted matches.
         """
-        text = Text.from_markup(candidate)
-        match = self._query_regex.search(text.plain)
-        if match is None:
-            return text
-        assert match.lastindex is not None
-        offsets = [match.span(group_no)[0] for group_no in range(1, match.lastindex + 1)]
+        content = Content.from_markup(candidate)
+        score, offsets = self.fuzzy_search.match(self.query, candidate)
+        if not score:
+            return content
         for offset in offsets:
-            text.stylize(self._match_style, offset, offset + 1)
-
-        return text
+            if not candidate[offset].isspace():
+                content = content.stylize(self._match_style, offset, offset + 1)
+        return content
 
     def highlights(self, candidate: list[str | Text]) -> list[Text]:
         highlighted: list[Text] = []
         for string in candidate:
             if isinstance(string, str):
-                highlighted.append(self.highlight(string))
+                highlighted.append(Text.from_markup(self.highlight(string).markup))
             else:
-                highlighted.append(self.highlight(string.markup))
+                highlighted.append(Text.from_markup(self.highlight(string.markup).markup))
 
         return highlighted
 
@@ -168,7 +168,7 @@ class HistoryPage(BasePage):
             if self.input.value:
                 search_string = self.input.value
                 threshold = 0.7
-                matcher = MarkupMatcher(search_string, match_style=Style(color="yellow"))
+                matcher = MarkupMatcher(search_string, match_style=Style(foreground=Color.parse("yellow")))
 
                 if not any(matcher.match(str(row)) > threshold for row in rows):
                     continue

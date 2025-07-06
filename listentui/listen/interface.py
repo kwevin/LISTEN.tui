@@ -339,6 +339,10 @@ class Event(ConfigurableBase):
 @dataclass
 class Song(ConfigurableBase):
     @classmethod
+    def _empty(cls: Type[Self]) -> Self:
+        return cls(SongID(0), "", None, None, None, None, None, 0)
+
+    @classmethod
     def from_data(cls: Type[Self], data: dict[str, Any]) -> Self:
         return cls(
             id=data["id"],
@@ -529,10 +533,11 @@ class ListenWsData:
         Return:
             Self `ListenWsData`
         """
+        start_time = data["d"].get("startTime")
         return cls(
             _op=data["op"],
             _t=data["t"],
-            start_time=datetime.fromisoformat(data["d"]["startTime"]),
+            start_time=datetime.fromisoformat(start_time) if start_time else datetime.now(),
             listener=data["d"]["listeners"],
             requester=Requester.from_data(data["d"]["requester"]) if data["d"].get("requester") else None,
             event=Event.from_data(data["d"]["event"]) if data["d"].get("event") else None,

@@ -430,7 +430,7 @@ class ListenClient:
         return not time.time() >= jwt_payload["exp"]
 
     @classmethod
-    async def login(cls, username: str, password: str, user_token: Optional[str] = None) -> Self | TransportQueryError:
+    async def login(cls, username: str, password: str, user_token: Optional[str] = None) -> Self | Exception:
         """return a new instance of ListenClient with a logged in user else None if the login failed"""
         if user_token and not cls.validate_token(user_token):
             return await cls.login(username, password)
@@ -465,7 +465,7 @@ class ListenClient:
                 try:
                     async with client as session:
                         res: dict[str, Any] = await session.execute(document=query.login, variable_values=params)  # pyright: ignore
-                except TransportQueryError as e:
+                except Exception as e:
                     return e
                 user: dict[str, Any] = res["login"]["user"]
                 token: str = res["login"]["token"]

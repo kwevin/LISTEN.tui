@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import signal
 import sys
@@ -7,7 +6,6 @@ from logging import getLogger
 
 from textual import on, work
 from textual.app import App
-from textual.css.query import NoMatches
 
 from listentui.data.config import Config
 from listentui.listen.client import ListenClient
@@ -28,7 +26,6 @@ from listentui.screen.modal.messages import (
 from listentui.screen.modal.songScreen import SongScreen
 from listentui.screen.modal.sourceScreen import SourceScreen
 from listentui.utilities import get_root
-from listentui.widgets.floatingPlayer import FloatingPlayer, HideFloatingPlayer, ShowFloatingPlayer
 from listentui.widgets.player import MPVThread, Player
 
 
@@ -52,7 +49,10 @@ class ListentuiApp(App[str]):
         config = Config.get_config()
         status = await self.push_screen_wait(LoginScreen())
         if not status:
-            self.exit(return_code=1, message="Login failed, please check your username and password")
+            self.exit(
+                return_code=1,
+                message="Login failed, please check your username and password",
+            )
             return
         # configure the client interface
         ConfigurableBase.prefer_romaji_first = config.display.romaji_first

@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from rich.highlighter import JSONHighlighter
 
@@ -68,3 +70,8 @@ def format_time_since(time: datetime, short_hand: bool = False) -> str:  # noqa:
     string.append("ago")
 
     return " ".join(string)
+
+
+def json_dump(dictionary: dict[Any, Any]):
+    with open("json_dump.json", "w+", encoding="utf-8") as f:
+        json.dump(dictionary, f, indent=4)

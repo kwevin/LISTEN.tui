@@ -1,323 +1,424 @@
-from concurrent.futures import Future, ThreadPoolExecutor
-from enum import Enum
-from typing import ClassVar, Iterable
+from __future__ import annotations
+
+from threading import Event
+from typing import ClassVar, Sequence
 
 from rich.rule import Rule
 from rich.text import Text
-from textual import work
+from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Container, Grid, Horizontal, ScrollableContainer
+from textual.containers import Grid, Horizontal, ScrollableContainer
+from textual.message import Message
 from textual.reactive import var
 from textual.widget import Widget
-from textual.widgets import Footer, Input, Label, Static
+from textual.widgets import Button, Footer, Input, Label, Placeholder, ProgressBar, Static, TabbedContent, TabPane
 from textual.worker import Worker, get_current_worker  # type: ignore
 
 from listentui.data.config import Config
-from listentui.downloader.providers.search.baseProvider import SearchResult
-from listentui.downloader.providers.search.ytm import YoutubeMusic
+from listentui.downloader.downloader import Downloader, DownloadItem, QueueState
 from listentui.listen.client import ListenClient
 from listentui.listen.interface import Song, SongID
 from listentui.pages.base import BasePage
+from listentui.screen.modal.searchResultPicker import SearchResultPicker
 from listentui.utilities import de_kuten
-from listentui.widgets.removableCollapsible import RemovableCollapsible
-from listentui.widgets.scrollableLabel import ScrollableLabel
+from listentui.widgets.downloadQueueItem import ActionInput, DownloadItemCollapsible
+from listentui.widgets.pageSwitcher import PageSwitcher
 
 
-class QueueState(Enum):
-    QUEUED = 0
-    SEARCHING = 1
-    NOT_FOUND = 2
-    FOUND = 3
-    DOWNLOADING = 4
-    DONE = 5
-
-
-class SongInfo(Grid):
+class UtilityPanel(Widget):
     DEFAULT_CSS = """
-    SongInfo {
-        width: 100%;
-        height: 6;
-        align: center middle;
-        grid-size: 3 2;
-        grid-gutter: 1 2;
-        grid-rows: 1 3;
-        
-        &> Container {
-            height: 3;
-            width: 100%;
-            align: left middle;
-        }
-    }
-    SongInfo ScrollableLabel {
-        height: 1;
-    }
-    
-    """
+    UtilityPanel { 
+        height: 1fr;
+        width: 1fr;
 
-    def __init__(self, song: Song) -> None:
-        super().__init__()
-        self.song = song
-
-    def compose(self) -> ComposeResult:
-        yield Label("Track/Artist")
-        yield Label("Album")
-        yield Label("Source")
-        yield Container(
-            ScrollableLabel(Text.from_markup(self.song.format_title() or ""), id="title"),
-            ScrollableLabel(
-                *[Text.from_markup(f"[red]{artist}[/]") for artist in a]
-                if (a := self.song.format_artists_list())
-                else [],
-                id="artist",
-            ),
-        )
-        album = self.song.format_album()
-        source = self.song.format_source()
-        yield Container(
-            ScrollableLabel(
-                Text.from_markup(f"[green]{album}[/]" if album else ""),
-                id="album",
-            )
-        )
-        yield Container(
-            ScrollableLabel(
-                Text.from_markup(f"[cyan]{source}[/]" if source else ""),
-                id="source",
-            )
-        )
-        yield Label(f"Duration: {self.song.duration}", id="duration")
-
-
-class QueueItem(Widget):
-    state: var[QueueState] = var(QueueState.QUEUED)
-
-    DEFAULT_CSS = """
-    QueueItem {
-        border-left: inner $background-lighten-1;
-        width: 100%;
-        height: auto;
-        &.searching, &.downloading {
-            border-left: inner $secondary-lighten-1;
-        }
-
-        &.found {
-            border-left: inner $primary-lighten-1;
-        }
-
-        &.done {
-            border-left: inner $success-lighten-1;
-        }
-        
-        &.not_found {
-            border-left: inner $error-lighten-1;
-        }
-        & Horizontal {
-            margin-top: 1;
-            width: auto;
+        & > Horizontal {
             height: auto;
-        }
-
-        & SongInfo, #url-scores {
-            margin-left: 1;
-        }
-    }
-    """
-
-    def __init__(self, song: Song) -> None:
-        super().__init__(id=f"queue-item-{song.id}")
-        self.song = song
-        self.border_subtitle = f"{self.song.id}"
-        self.result: SearchResult | list[SearchResult] | None = None
-        self.has_metadata = False
-
-    def compose(self) -> ComposeResult:
-        with RemovableCollapsible(title=f"[{self.song.id}] {de_kuten(self.song.format_title() or '')}"):
-            yield SongInfo(self.song)
-            yield Input(id="result-url")
-            yield Label(classes="url-data", id="url-scores")
-            yield Static(Rule("Metadata", style="white"))
-            yield Input(id="metadata-title")
-            with Horizontal():
-                yield Input(id="metadata-artist")
-                yield Input(id="metadata-album")
-
-    def on_mount(self) -> None:
-        url = self.query_exactly_one("#result-url", Input)
-        url.border_subtitle = "[@click=focused.clear]Clear[/]   [@click=focused.autofill]Autofill[/]"
-        url.border_title = "URL"
-
-        self.query_one("#metadata-title").border_title = "Title"
-        self.query_one("#metadata-artist").border_title = "Artist"
-        self.query_one("#metadata-album").border_title = "Album"
-
-        if Config.get_config().downloader.use_radio_metadata:
-            self.query_exactly_one("#metadata-title", Input).value = self.song.format_title()
-            self.query_exactly_one("#metadata-artist", Input).value = self.song.format_artists(show_character=False)
-            self.query_exactly_one("#metadata-album", Input).value = self.song.format_album()
-
-    def watch_state(self, old_state: QueueState, new_state: QueueState) -> None:
-        self.remove_class(old_state.name.lower())
-        self.add_class(new_state.name.lower())
-
-    @work
-    async def update_result(self, result: SearchResult | list[SearchResult]) -> None:
-        self.result = result
-        if isinstance(result, list):
-            self.state = QueueState.NOT_FOUND
-            return
-
-        self.state = QueueState.FOUND
-        result_input = self.query_exactly_one("#result-url", Input)
-        result_input.value = result.url
-        result_input.tooltip = f"[red]Title[/]: {result.title}\n[red]Artist[/]: {','.join(result.artist or [])}\n[red]Album[/]: {result.album}"  # noqa: E501
-
-        scores = [
-            f"Total: {round(result.scores.total, 2)}",
-            f"TL: {round(result.scores.title, 2)}",
-            f"AR: {round(result.scores.artist, 2)}",
-            f"AL: {round(result.scores.album, 2)}",
-            f"D: {round(result.scores.duration, 2)}",
-            f"V: {round(result.scores.views, 2)}",
-            f"B: {sum(result.scores.bonuses)}",
-        ]
-
-        self.query_one("#url-scores", Label).update(" ".join(scores))
-
-        if not Config.get_config().downloader.use_radio_metadata:
-            self.query_exactly_one("#metadata-title", Input).value = result.title
-            self.query_exactly_one("#metadata-artist", Input).value = ",".join(result.artist or [])
-            self.query_exactly_one("#metadata-album", Input).value = result.album or ""
-
-
-class DownloadPage(BasePage):
-    # we want the data to be persistant
-    # TODO: pickle and save in case of weird crash it can recover
-    queue: ClassVar[dict[SongID, QueueItem]] = {}
-
-    DEFAULT_CSS = """
-    DownloadPage {
-        align: center middle;
-
-        & ScrollableContainer {
-            padding: 1 1;
         }
 
         & Input {
             width: 1fr;
+            border-title-color: $text-accent;
         }
+
+        & Button {
+            margin-right: 1;
+        }
+    }
+
+    UtilityPanel Grid {
+        grid-size: 4 4;
+        grid-gutter: 1 1;
+        grid-columns: 1fr;
+        grid-rows: 1fr;
+
+        margin: 1 1;
     }
     """
 
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("ctrl+s", "start", "start"),
-        Binding("ctrl+a", "cancel", "abort"),
-    ]
-
-    def __init__(self) -> None:
+    def __init__(self, parent: DownloadPage) -> None:
         super().__init__()
-        self.client = ListenClient.get_instance()
-        self.thread = 5
-        self.current_page = 1
-        self.pool = ThreadPoolExecutor(self.thread)
+        self.control = parent
 
     def compose(self) -> ComposeResult:
-        yield Input()
-        with ScrollableContainer():
-            for item in self.get_queue_item():
-                yield item
+        with Horizontal():
+            int_put = Input(type="integer", id="manual-add")
+            yield int_put
+            int_put.border_title = "Manual SongID"
 
-    def get_queue_item(self) -> Iterable[QueueItem]:
-        return self.queue.values()
+            yield Button("Add", id="song-add")
+        yield Static(Rule("Quick Actions"))
+        with Grid():
+            yield Button("Add favorited", id="favorite-add")
 
-    @work
-    async def resort(self) -> None:
-        self.query_exactly_one(ScrollableContainer).sort_children(
-            key=lambda item: item.state.value if isinstance(item, QueueItem) else -1, reverse=True
-        )
+    @on(Button.Pressed, "#song-add")
+    async def add_song(self, event: Button.Pressed):
+        input_widget = self.query_one(Input)
 
-    @work
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        user = self.client.current_user
-        assert user is not None
-        songs = await self.client.user_favorites(user.username, 0, 10)
-        self.batch_queue(songs)
+        if input_widget.value and input_widget.is_valid:
+            song_id = SongID(int(input_widget.value))
 
-    @work
-    async def batch_queue(self, songs: Iterable[Song]) -> None:
-        new_items: list[QueueItem] = []
-        for song in songs:
-            if self.queue.get(song.id) is not None:
-                continue
-            queue_item = QueueItem(song)
-            self.queue[song.id] = queue_item
-            new_items.append(queue_item)
-        await self.query_one(ScrollableContainer).mount_all(new_items)
-        self.resort()
+            if self.control.downloader.has_song(song_id):
+                self.set_button_fail(event.control)
+                return
 
-    def add_to_queue(self, song: Song) -> None:
-        if self.queue.get(song.id) is None:
-            self.notify("Song already in download queue")
+            client = ListenClient.get_instance()
+
+            event.control.loading = True
+            event.control.disabled = True
+            song = await client.song(song_id)
+            event.control.loading = False
+            event.control.disabled = False
+
+            if song is None:
+                self.set_button_fail(event.control)
+                return
+
+            if await self.control.add_song(song):
+                self.set_button_success(event.control)
+                return
+
+            self.set_button_fail(event.control)
             return
 
-        self.batch_queue([song])
+        self.set_button_fail(event.control)
+        return
 
-    async def remove_from_queue(self, song: Song) -> None:
-        # shouldnt raise the error as the only way to remove from queue is in the queue itself
-        # item = self.queue.pop(song.id)
-        pass
+    @on(Button.Pressed, "#favorite-add")
+    async def add_favorites(self, event: Button.Pressed):
+        client = ListenClient.get_instance()
+        user = client.current_user
+        assert user is not None
+        songs = await client.user_favorites(user.username, 0, 125)
+        await self.control.batch_add_songs(songs)
 
-    def action_start(self) -> None:
-        self.start_searcher()
+    def set_button_fail(self, button: Button):
+        button.variant = "error"
 
-    def action_cancel(self) -> None:
-        self.workers.cancel_group(self, "searcher")  # type: ignore
+        def reset():
+            button.variant = "default"
 
-    @work(thread=True, group="searcher")
-    def start_searcher(self) -> None:
-        def update_queue_item(searcher: YoutubeMusic, item: QueueItem) -> None:
-            item.state = QueueState.SEARCHING
-            item.update_result(searcher.find_best())
+        self.set_timer(1, reset)
 
-        futures: list[Future[None]] = []
-        for item in self.queue.values():
-            if item.result:
-                continue
-            searcher = YoutubeMusic(item.song)
-            futures.append(self.pool.submit(update_queue_item, searcher, item))
+    def set_button_success(self, button: Button):
+        button.variant = "success"
 
-        worker: Worker[None] = get_current_worker()
-        for future in futures:
-            if worker.is_cancelled:
-                break
-            future.result()
+        def reset():
+            button.variant = "default"
 
-        # cancel all futures that are not done
-        for future in futures:
-            if not future.done():
-                future.cancel()
+        self.set_timer(1, reset)
 
-        # wait for any futures that is running to be done
-        for future in futures:
-            if future.running():
-                future.result()
 
-        self.resort()
+class DownloadPage(BasePage):
+    DEFAULT_CSS = """
+    DownloadPage #_dl_btn {
+        dock: bottom;
+        grid-size: 4 2;
+        grid-columns: 1fr 18 18 18;
+        grid-rows: 1 1;
+        grid-gutter: 1 0;
+        height: 5;
+        width: 100%;
+        height: auto;
+
+        & Button {
+            row-span: 2;
+        }
+
+        #stats-label, ProgressBar {
+            margin-left: 1;
+        }
+
+    }
+    DownloadPage DownloadItemCollapsible {
+        margin: 0 1 0 1;
+    }
+    """
+
+    downloader = Downloader()
+
+    class SearchUpdate(Message):
+        def __init__(self, song_id: SongID, dowload_item: DownloadItem, progress: tuple[int, int]) -> None:
+            super().__init__()
+            self.song_id = song_id
+            self.dowload_item = dowload_item
+            self.progress = progress
+
+    class DownloadUpdate(Message):
+        def __init__(self, song_id: SongID, dowload_item: DownloadItem, progress: float) -> None:
+            super().__init__()
+            self.song_id = song_id
+            self.dowload_item = dowload_item
+            self.progress = progress
+
+    def __init__(self):
+        super().__init__()
+        self._per_page_count = 20
+        self._searching = Event()
+        self._downloading = Event()
+        self._queue_items: dict[SongID, DownloadItemCollapsible] = {}
+        self._pager = PageSwitcher()
+        self._progress = ProgressBar()
+        self._stat_label = Label(id="stats-label")
+
+    def compose(self) -> ComposeResult:
+        with TabbedContent():
+            with TabPane("Queue"):
+                yield ScrollableContainer(id="queue-container")
+                yield self._pager
+                with Grid(id="_dl_btn"):
+                    yield self._stat_label  # global stats, object and progress bar goes here
+                    yield Button("Clear", id="btn-clear")
+                    yield Button("Search", id="btn-search")
+                    yield Button("Download", id="btn-download")
+                    yield self._progress
+            with TabPane("Done"):
+                yield Placeholder()
+            with TabPane("Utilities"):
+                yield UtilityPanel(self)
+
+    def on_mount(self):
+        self.get_page(1)
+
+    def update_stat_label(self):
+        current_item = self.downloader.get_queue()
+        found = [item for item in current_item if item.state == QueueState.FOUND]
+        self.set_stat_label(len(found), len(current_item))
+
+    def set_stat_label(self, found_progress: int, total: int):
+        self._stat_label.update(f"Item: {total} | Found: {found_progress} | {found_progress / total:.2f}%")
+
+    @on(PageSwitcher.PageChanged)
+    def page_changed(self, event: PageSwitcher.PageChanged):
+        self.get_page(event.page)
+
+    @work(exclusive=True, group="downloadpage")
+    async def get_page(self, page: int):
+        queue = self.query_one("#queue-container", ScrollableContainer)
+        await queue.remove_children()
+        self._clear_item()
+        start = (page - 1) * self._per_page_count
+        stop = start + self._per_page_count
+        items = self.downloader.get_queue()
+        items.sort(key=lambda item: item.state.value, reverse=True)
+        widgets = [self._new_item(item) for item in items[start:stop]]
+        await queue.mount_all(widgets)
+
+        # self.sort_items()
+
+    def _new_item(self, item: DownloadItem) -> DownloadItemCollapsible:
+        queue_item = DownloadItemCollapsible(item, title=item.song.format_title())
+        self._queue_items[item.song.id] = queue_item
+
+        return queue_item
+
+    def _remove_item(self, song_id: SongID):
+        self._queue_items.pop(song_id)
+
+    def _get_item(self, song_id: SongID) -> DownloadItemCollapsible | None:
+        return self._queue_items.get(song_id, None)
+
+    def _clear_item(self):
+        self._queue_items = {}
+
+    @on(DownloadItemCollapsible.RemoveDownloadItem)
+    async def _remove_from_queue(self, event: DownloadItemCollapsible.RemoveDownloadItem):
+        assert event.collapsible.id is not None
+        song_id = SongID(event.collapsible.get_id())
+
+        self.downloader.remove_from_queue(song_id)
+        self._remove_item(song_id)
+        queue = self.query_one("#queue-container", ScrollableContainer)
+        await queue.remove_children(f"#{event.collapsible.id}")
+
+    async def add_song(self, song: Song) -> bool:
+        result = self.downloader.add_to_queue(song)
+        if result is None:
+            return False
+
+        title = result.song.format_title()
+        self.get_page(self._pager.current_page)
+
+        self.notify(f"Added: {title}", title="Download Queue")
+
+        self._pager.calculate_update_end_page(self._per_page_count, len(self.downloader.get_queue()))
+        return True
+
+    async def batch_add_songs(self, songs: Sequence[Song]):
+        items = self.downloader.batch_to_queue(songs)
+
+        self.get_page(self._pager.current_page)
+        self._pager.calculate_update_end_page(self._per_page_count, len(self.downloader.get_queue()))
+        self.notify(f"Added {len(items)}/{len(songs)} songs", title="Download Queue")
+
+    def sort_items(self):
+        self.get_page(self._pager.current_page)
+        # queue = self.query_one("#queue-container", ScrollableContainer)
+
+        # def sort(widget: Widget):
+        #     if isinstance(widget, DownloadItemCollapsible):
+        #         return widget.get_item().item.state.value
+        #     return 0
+
+        # queue.sort_children(key=sort, reverse=True)
+
+    @on(SearchUpdate)
+    async def search_update_item(self, event: SearchUpdate):
+        widget = self._get_item(event.song_id)
+        if widget:
+            widget.update_item(event.dowload_item)
+
+        self._progress.update(progress=event.progress[0], total=event.progress[1])
+        self.update_stat_label()
+
+    @on(DownloadUpdate)
+    async def download_update_item(self, event: DownloadUpdate):
+        widget = self._get_item(event.song_id)
+        if widget:
+            widget.update_item(event.dowload_item)
+
+        # TODO: stats and progress
+
+    @on(Button.Pressed, "#btn-search")
+    def manual_search_all(self, event: Button.Pressed):
+        if self._searching.is_set():
+            self._cancel_search(event)
+        elif self.downloader.has_searchable():
+            self._start_search(event)
 
     @work(thread=True)
-    def start_download(self) -> None: ...
+    def _start_search(self, event: Button.Pressed):
+        def handle_callback(song_id: SongID, queue_item: DownloadItem, progress: tuple[int, int]):
+            self.post_message(self.SearchUpdate(song_id, queue_item, progress))
+
+        def set_button():
+            self._searching.set()
+            button = event.control
+            button.label = "Cancel Search"
+
+        def set_done():
+            self._searching.clear()
+            button = event.control
+            button.label = "Search"
+            button.set_loading(False)
+            button.disabled = False
+
+        self.app.call_from_thread(set_button)
+        self.downloader.batch_search_all(handle_callback)
+        self.app.call_from_thread(set_done)
+        self.app.call_from_thread(self.sort_items)
+
+    @work(thread=True)
+    def _cancel_search(self, event: Button.Pressed):
+        def set_button():
+            self._searching.clear()
+            button = event.control
+            button.label = "Search"
+            button.set_loading(False)
+            button.disabled = False
+
+        def set_loading():
+            button = event.control
+            button.set_loading(True)
+            button.disabled = True
+
+        self.app.call_from_thread(set_loading)
+        self.downloader.cancel_batch_search()
+        self.app.call_from_thread(set_button)
+        self.app.call_from_thread(self.sort_items)
+
+    @on(DownloadItemCollapsible.FillDownloadItem)
+    @work(thread=True)
+    def _autofill_item(self, event: DownloadItemCollapsible.FillDownloadItem):
+        # TODO: thread safety
+        metadata = event.collapsible.get_download_item().metadata
+        if metadata and metadata.url == event.url:
+            event.download_item.state = QueueState.FOUND
+            event.collapsible.update_item(event.download_item.set_metadata(metadata), True)
+            return
+
+        result = self.downloader.get_from_link(event.url)
+
+        if result:
+            event.download_item.state = QueueState.FOUND
+            event.collapsible.update_item(event.download_item.set_metadata(result), True)
+
+    @on(DownloadItemCollapsible.ShowDownloadItemResult)
+    @work
+    async def _show_results_screen(self, event: DownloadItemCollapsible.ShowDownloadItemResult):
+        result = await self.app.push_screen_wait(SearchResultPicker(event.download_item))
+
+        if result is None:
+            return
+
+        event.download_item.state = QueueState.FOUND
+        event.collapsible.update_item(event.download_item.set_metadata(result))
+
+    @on(DownloadItemCollapsible.SearchDownloadItem)
+    @work(thread=True)
+    def _search_item(self, event: DownloadItemCollapsible.SearchDownloadItem):
+        def handle_callback(song_id: SongID, download_item: DownloadItem, progress: tuple[int, int]):
+            self.post_message(self.SearchUpdate(song_id, download_item, progress))
+
+        download_item = event.download_item
+        self.downloader.search(download_item.song.id, handle_callback)
+
+    @on(DownloadItemCollapsible.DownloadDownloadItem)
+    @work(thread=True)
+    def _download_item(self, event: DownloadItemCollapsible.DownloadDownloadItem):
+        def handle_callback(song_id: SongID, download_item: DownloadItem, progress: float):
+            self.post_message(self.DownloadUpdate(song_id, download_item, progress))
+
+        self.notify(f"{event.download_item.final_title}")
+
+        ret = self.downloader.download(event.download_item.song.id, handle_callback)
+
+        if ret:
+            self._log.exception("Download Error", ret)
+
+    @on(Button.Pressed, "#btn-clear")
+    @work
+    async def clear_queue(self):
+        # TODO: make this confirm
+        self.downloader.clear_queue()
+        self._clear_item()
+        queue = self.query_one("#queue-container", ScrollableContainer)
+        await queue.remove_children()
 
 
-from textual.app import App, ComposeResult
+from textual.app import App
 
 
 class MyApp(App[None]):
+    CSS_PATH = "../../testing.tcss"
+
     def compose(self) -> ComposeResult:
         yield DownloadPage()
         yield Footer()
 
     async def on_load(self) -> None:
-        client = await ListenClient.login("kwevin", "^3&hcZ8q3TX&uG7s")
+        config = Config.get_config()
+        client = await ListenClient.login(config.client.username, config.client.password)
         assert isinstance(client, ListenClient)
         await client.connect()
 
@@ -327,3 +428,9 @@ app.run()
 
 
 # download use a separate romaji preference setting
+
+# widget[DownloadQueueItem -> QueueItem] -> actualData[DownloadItem]
+
+# TODO: disable batch download when searching, likewise, disable batch search when downloading
+# or think of a better solution, the current system should be able to handle both, its just that
+# there is no locks to continue either one

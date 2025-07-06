@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from logging import getLogger
+from pathlib import Path
 from typing import Any, ClassVar, Protocol
 
 import tomli
@@ -79,7 +80,7 @@ class Player(ConfigCatagory):
     """MPV options to pass to mpv (see https://mpv.io/manual/master/#options)"""
 
     def __post_init__(self):
-        if not self.mpv_options:
+        if not self.mpv_options.keys():
             self.mpv_options = {
                 "ad": "vorbis",
                 "cache": True,
@@ -92,8 +93,55 @@ class Player(ConfigCatagory):
 
 @dataclass
 class Downloader(ConfigCatagory):
+    manual_search: bool = True
+    """Manually trigger search, if this is off, entries are
+        automatically scanned as theyre added
+    """
+    manual_download: bool = True
+    """Manually trigger download, if this is off,
+        searched entries are automatically downloaded
+    """
     use_radio_metadata: bool = True
     """Use the radio given metadata over source"""
+    output_directory: str = "."
+    """The download output directory"""
+    custom_args: dict[str, Any] = field(default_factory=dict)
+    """Custom arguments"""
+
+    def get_output_directory(self) -> Path:
+        return Path(self.output_directory).resolve()
+
+    def __post_init__(self):
+        if not self.custom_args:
+            """
+            --quiet 
+            --no-progress 
+            --embed-metadata
+            --embed-thumbnail
+            --extract-audio
+            --format "m4a/bestaudio/best"
+
+            + default settings by yt_dlp
+            """
+            self.custom_args = {
+                "fragment_retries": 10,
+                "retries": 10,
+                "quiet": True,
+                "noprogress": True,
+                "writethumbnail": True,
+                "format": "m4a/bestaudio/best",
+                "outtmpl": {"default": "%(title)s.%(ext)s", "pl_thumbnail": ""},
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "best",
+                        "preferredquality": 0,
+                        "nopostoverwrites": False,
+                    },
+                    {"key": "FFmpegMetadata", "add_chapters": True, "add_infojson": "if_exists", "add_metadata": True},
+                    {"key": "EmbedThumbnail", "already_have_thumbnail": False},
+                ],
+            }
 
 
 @dataclass

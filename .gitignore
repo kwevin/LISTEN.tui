@@ -11,3 +11,5 @@ _legacy
 todo.md
 config-dev.toml
 table_dump
+download
+.venv

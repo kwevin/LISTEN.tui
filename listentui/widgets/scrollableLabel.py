@@ -6,9 +6,9 @@ from rich.repr import Result
 from rich.segment import Segment
 from rich.text import Span, Text
 from textual import events
+from textual.content import Content
 from textual.message import Message
 from textual.reactive import reactive, var
-from textual.strip import Strip
 from textual.widget import Widget
 
 
@@ -38,6 +38,8 @@ class ScrollableLabel(Widget):
     ScrollableLabel {
         width: 100%;
         height: 1;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
 
         & > .scrollable-label--highlighted {
             text-style: bold not underline;
@@ -410,12 +412,18 @@ if __name__ == "__main__":
     from textual.app import App, ComposeResult
 
     class MyApp(App[None]):
+        DEFAULT_CSS = """
+        Screen ScrollableLabel {
+            width: 10;
+        }
+        """
+
         def compose(self) -> ComposeResult:
-            yield ScrollableLabel(sep="_-_-_")
+            yield ScrollableLabel(sep="             ")
 
         async def on_mount(self) -> None:
             label = self.query_one(ScrollableLabel)
-            label.update((Text("One"), Text("Two")), (Text("Four"), Text("Five")))
+            label.update((Text("This is a test string"), Text("Fragmented")), (Text("Text"), Text("How")))
 
     app = MyApp()
     app.run()

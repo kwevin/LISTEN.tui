@@ -93,6 +93,9 @@ class LoginScreen(Screen[bool]):
                 if isinstance(client, TransportQueryError):
                     self.set_error(str(client.errors[0].get("message")) if client.errors else None)
                     return
+                if isinstance(client, Exception):
+                    self.set_error("An Error has occured, please try again, or contact the developer")
+                    return
             except TimeoutError:
                 self.set_error("Login took too long, please check your internet connection and restart the app")
                 return

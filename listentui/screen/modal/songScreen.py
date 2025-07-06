@@ -199,7 +199,7 @@ class SongScreen(BaseScreen[bool, SongID, Song]):
     async def on_mount(self) -> None:
         client = ListenClient.get_instance()
         self.query_one(ArtistScrollableLabel).update(self.song)
-        self.query_one(Grid).border_subtitle = f"[{self.song.id}]"
+        self.query_one(Grid).border_subtitle = f"\\[{self.song.id}]"
         self.query_one(Grid).border_title = f"Uploader: {self.song.uploader.display_name}" if self.song.uploader else ""
         if self.got_favorited:
             self.is_favorited = self.got_favorited

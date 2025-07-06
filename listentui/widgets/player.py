@@ -49,7 +49,7 @@ class Activity(Enum):
     COMPETING = 5
 
 
-class AioPresence(AioPresence):
+class AioPresence(AioPresence):  # type: ignore
     async def update(
         self,
         pid: int = os.getpid(),
@@ -94,7 +94,7 @@ class AioPresence(AioPresence):
         return await self.read_output()
 
 
-class Payload(Payload):
+class Payload(Payload):  # type: ignore
     @classmethod
     def set_activity_with_type(
         cls,
@@ -396,9 +396,9 @@ class Player(Widget):
                             pass
             except ConnectionClosedOK:
                 return
-            except ConnectionClosedError:
+            except ConnectionClosedError as exc:
                 self.post_message(self.WebsocketStatus(False, last_heartbeat))
-                self._log.exception("Websocket Connection Closed Unexpectedly")
+                self._log.exception("Websocket Connection Closed Unexpectedly", exc)
                 self.keepalive.cancel()
                 continue
 
@@ -504,6 +504,7 @@ class Player(Widget):
             res = await self.presence.update(
                 details=self.substitute(config.detail, substitution_dict),
                 state=self.substitute(config.state, substitution_dict),
+                start=round(time.time()) if song.duration else None,
                 end=self.get_epoch_end_time(song) if config.show_time_left else None,
                 large_image=self.get_large_image(song),
                 large_text=self.substitute(config.large_text, substitution_dict),
@@ -520,9 +521,9 @@ class Player(Widget):
             self.presense_connected = False
             self.query_one("#rpc", Label).update("[red]RPC[/]")
             self._log.info("Unable to update presense")
-        except Exception:
+        except Exception as exc:
             self.query_one("#rpc", Label).update("[red]RPC[/]")
-            self._log.exception("Something went wrong with updating discord presense")
+            self._log.exception("Something went wrong with updating discord presense", exc)
 
     async def on_unmount(self) -> None:
         if self.presense_connected:

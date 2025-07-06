@@ -1,0 +1,85 @@
+[tool.poetry]
+name = "listentui"
+version = "2.0.0"
+description = "A LISTEN.moe TUI"
+authors = ["kwevin"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+pypresence = "^4.3.0"
+python-mpv = "^1.0.6"
+rich = "^13.9.4"
+tomli = "^2.0.1"
+tomli-w = "^1.0.0"
+markdownify = "^0.12.1"
+textual = {extras = ["syntax"], version = "^2.1.1"}
+gql = { extras = ["aiohttps"], version = "^3.5.0" }
+xdg = "^6.0.0"
+frozendict = "^2.4.4"
+async-lru = "^2.0.4"
+yt-dlp = "^2025.1.26"
+ytmusicapi = "^1.8.2"
+pytz = "^2024.2"
+websockets = "^14.1"
+mutagen = "^1.47.0"
+brotlicffi = "^1.1.0.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5.7"
+pyinstaller = "^6.2.0"
+Nuitka = "^1.9.3"
+textual-dev = "^1.7.0"
+textual-dominfo = "^0.1.0"
+pyinstrument = "^5.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+listentui = 'listentui.__main__:run'
+
+[tool.pyright]
+exclude = ["**/_legacy"]
+
+[tool.ruff.lint]
+preview = true
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "B",
+    "Q",
+    "ASYNC",
+    "A",
+    "COM",
+    "C4",
+    "G",
+    "PIE",
+    "RET",
+    "SIM",
+    "PL",
+    "PERF",
+    "FURB",
+    "LOG",
+    "RUF",
+    "TID",
+]
+
+[tool.ruff]
+line-length = 120
+ignore = [
+    "PLR6301",
+    "F401",
+    "N999",
+    "G004",
+    "COM812",
+    "PLW3201",
+    "PLR0904",
+    "PLR0912",
+    "PLR0913",
+    "PLR0917",
+    "PLR0914",
+]

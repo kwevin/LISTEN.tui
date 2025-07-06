@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from rich.text import Text
+from textual import events
+from textual.message import Message
 from textual.reactive import var
-from textual.widgets import Button
+from textual.widgets import Button, Static
 
 from listentui.data.config import Config
 from listentui.listen import ListenClient
@@ -138,3 +140,43 @@ class VolumeButton(ToggleButton):
 
     def toggle(self) -> None:
         self.muted = not self.muted
+
+
+class LabelButton(Static, can_focus=True):
+    DEFAULT_CSS = """
+    LabelButton {
+        width: auto;
+        height: auto;
+        padding: 0 1 0 1;
+    }
+
+    LabelButton:hover {
+        background: $foreground 10%;
+        color: $text;
+    }
+
+    LabelButton:focus {
+        background: $accent;
+        color: $text;
+    }
+    """
+
+    class Clicked(Message):
+        def __init__(self, control: LabelButton) -> None:
+            super().__init__()
+            self.widget = control
+
+        @property
+        def control(self) -> LabelButton:
+            return self.widget
+
+    def __init__(self, label: str, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.label = label
+
+    def on_mount(self) -> None:
+        self.update(self.label)
+
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+        self.post_message(self.Clicked(self))
