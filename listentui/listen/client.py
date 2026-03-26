@@ -16,8 +16,9 @@ from gql import Client, GraphQLRequest, gql
 from gql.client import ReconnectingAsyncClientSession
 from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.exceptions import TransportQueryError
-from graphql import DocumentNode, print_ast
+from graphql import print_ast
 
+from listentui.data.config import Config
 from listentui.listen.interface import (
     Album,
     AlbumID,
@@ -243,8 +244,8 @@ def _build_queries():
     ).safe_substitute(base)
     songs = Template(
         """
-        query songs($$offset: Int!, $$count: Int!) {
-            songs(offset: $$offset, count: $$count) {
+        query songs($$offset: Int!, $$count: Int!, $$kpop: Boolean) {
+            songs(offset: $$offset, count: $$count, kpop: $$kpop) {
                 songs {
                     ${song}
                 }                    
@@ -288,8 +289,8 @@ def _build_queries():
     """
     play_statistic = Template(
         """
-        query play_statistic($count: Int!, $offset: Int) {
-            playStatistics(count: $count, offset: $offset) {
+        query play_statistic($count: Int!, $offset: Int, $kpop: Boolean) {
+            playStatistics(count: $count, offset: $offset, kpop: $kpop) {
                 songs {
                     createdAt
                     song {
@@ -307,8 +308,8 @@ def _build_queries():
     ).safe_substitute(base)
     search = Template(
         """
-        query search($term: ID!, $favoritesOnly: Boolean) {
-            search(query: $term, favoritesOnly: $favoritesOnly) {
+        query search($term: ID!, $favoritesOnly: Boolean, $kpop: Boolean) {
+            search(query: $term, favoritesOnly: $favoritesOnly, kpop: $kpop) {
                 ... on Song {
                     ${song}
                 }
@@ -318,8 +319,8 @@ def _build_queries():
     ).safe_substitute(base)
     request = Template(
         """
-        mutation requestSong($id: Int!) {
-            requestSong(id: $id) {
+        mutation requestSong($id: Int!, $kpop: Boolean) {
+            requestSong(id: $id, kpop: $kpop) {
                 ${song}
             }
         }
@@ -327,8 +328,8 @@ def _build_queries():
     ).safe_substitute(base)
     request_random = Template(
         """
-        mutation requestRandomFavorite {
-            requestRandomFavorite {
+        mutation requestRandomFavorite($kpop: Boolean) {
+            requestRandomFavorite(kpop: $kpop) {
                 ${song}
             }
         }
@@ -489,6 +490,10 @@ class ListenClient:
         if self._session:
             raise Exception("Client is already connected")
         async with self._lock:
+            transport = AIOHTTPTransport(self.ENDPOINT, headers=self.headers)
+            self._client = Client(transport=transport, fetch_schema_from_transport=False)
+            # TODO: changing reconnecting to True will cause it to eternally freeze
+            # on connect
             self._session = await self._client.connect_async(reconnecting=False)  # pyright: ignore[reportAttributeAccessIssue]
             self.connected = True
 
@@ -521,7 +526,10 @@ class ListenClient:
     async def _execute(
         self, document: GraphQLRequest, variable_values: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
-        res = await self._execute_cached(document=document, variable_values=frozendict(variable_values))  # type: ignore
+        if variable_values:
+            variable_values["kpop"] = not Config.get_config().player.jpop
+
+        res = await self._execute_cached(document=document, variable_values=frozendict(variable_values))  # pyright: ignore[reportArgumentType, reportCallIssue]
         hits = self._execute_cached.cache_info().hits
         if hits > self._last_hit:
             query = {"query": print_ast(document.document)}
@@ -536,6 +544,10 @@ class ListenClient:
         if not self.connected:
             raise Exception("Client must be connected")
         assert self._session is not None
+
+        if not isinstance(variable_values, frozendict) and isinstance(variable_values, dict):
+            variable_values["kpop"] = not Config.get_config().player.jpop
+
         try:
             query = document
             query.variable_values = variable_values
@@ -556,8 +568,7 @@ class ListenClient:
             raise NotAuthenticatedError()
         current_user = self._user
         user = await self.user(current_user.username, offset, count)
-        if not user:
-            raise Exception("wtf")
+        assert user is not None
         self._user = CurrentUser(
             user.uuid,
             user.username,

@@ -220,7 +220,7 @@ class Player(Widget):
         self.is_first_song = True
         self._song_count = 0  # use for calculating first song only
         self.progress_bar = DurationProgressBar(stop=True, pause_on_end=False)
-        self.player = MPVThread(self)
+        self.player = MPVThread(self, Config.get_config().player.jpop)
         self.retries = 0
         self.websocket_time = 0
         self.mpv_time = 0
@@ -363,7 +363,10 @@ class Player(Widget):
     @work(exclusive=True, group="websocket")
     async def websocket(self) -> None:
         last_heartbeat: datetime = datetime.now()
-        async for self._ws in websockets.connect("wss://listen.moe/gateway_v2", ping_interval=None, ping_timeout=None):
+        ws_url = (
+            "wss://listen.moe/gateway_v2" if Config.get_config().player.jpop else "wss://listen.moe/kpop/gateway_v2"
+        )
+        async for self._ws in websockets.connect(ws_url, ping_interval=None, ping_timeout=None):
             try:
                 while True:
                     res: dict[str, Any] = json.loads(await self._ws.recv())

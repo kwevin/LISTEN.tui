@@ -68,6 +68,8 @@ class Display(ConfigCatagory):
 
 @dataclass
 class Player(ConfigCatagory):
+    jpop: bool = True
+    """Jpop/Kpop"""
     inactivity_timeout: int = 5
     """How long to wait after the player becomes inactive before restarting"""
     restart_timeout: int = 20

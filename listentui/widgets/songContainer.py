@@ -18,7 +18,7 @@ class SongContainer(Widget):
         height: auto;
     }
     """
-    song: reactive[None | Song] = reactive(None, layout=True, init=False)
+    song: reactive[Song | None] = reactive(None, layout=True, init=False)
 
     def __init__(self, song: Optional[Song] = None) -> None:
         super().__init__()

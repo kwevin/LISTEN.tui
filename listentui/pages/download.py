@@ -420,7 +420,7 @@ class MyApp(App[None]):
         config = Config.get_config()
         client = await ListenClient.login(config.client.username, config.client.password)
         assert isinstance(client, ListenClient)
-        await client.connect()
+        # await client.connect()
 
 
 app = MyApp()

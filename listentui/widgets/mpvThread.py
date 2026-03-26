@@ -103,10 +103,10 @@ class MPVThread(Thread):
     instance: MPVThread | None = None
     pv_thread: MPVPreviewer | None = None
 
-    def __init__(self, main: Widget) -> None:
+    def __init__(self, main: Widget, jpop: bool) -> None:
         super().__init__(name="MPVThread", daemon=True)
         self.main = main
-        self.stream_url = "https://listen.moe/stream"
+        self.stream_url = "https://listen.moe/stream" if jpop else "https://listen.moe/kpop/stream"
         self.player = MPV(ytdl=True, **self.get_options(), terminal=False, log_handler=self.log_handler)
         MPVThread.instance = self
         self.watcher = MPVWatcher(self)
