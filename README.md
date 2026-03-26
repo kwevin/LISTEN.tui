@@ -6,6 +6,8 @@
 
 ---
 
+# If you want kpop support check out the v2 branch
+
 # Glossary
 
 - [Installation](#installation)
