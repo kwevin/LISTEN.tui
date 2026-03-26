@@ -185,12 +185,12 @@ class MPVThread(Thread):
         date: str | None
         album: str | None
         comment: str | None
-        _ENCODER: str
-        _icy_br: str
-        _icy_genre: str
-        _icy_name: str
-        _icy_pub: str
-        _icy_url: str
+        # _ENCODER: str
+        # _icy_br: str
+        # _icy_genre: str
+        # _icy_name: str
+        # _icy_pub: str
+        # _icy_url: str
 
         def __rich_repr__(self) -> RichReprResult:
             yield self.start
@@ -269,12 +269,12 @@ class MPVThread(Thread):
             date=new_value.get("date"),
             album=new_value.get("album"),
             comment=new_value.get("comment"),
-            _ENCODER=new_value["ENCODER"],
-            _icy_br=new_value["icy-br"],
-            _icy_genre=new_value["icy-genre"],
-            _icy_name=new_value["icy-name"],
-            _icy_pub=new_value["icy-pub"],
-            _icy_url=new_value["icy-url"],
+            # _ENCODER=new_value["ENCODER"],
+            # _icy_br=new_value["icy-br"],
+            # _icy_genre=new_value["icy-genre"],
+            # _icy_name=new_value["icy-name"],
+            # _icy_pub=new_value["icy-pub"],
+            # _icy_url=new_value["icy-url"],
         )
         if self._metadata == metadata:
             return

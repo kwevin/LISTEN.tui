@@ -34,7 +34,13 @@ dev = [
 ]
 
 [tool.pyright]
-exclude = ["**/_legacy", "**/.venv"]
+exclude = [
+    "**/_legacy",
+    "**/.venv",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+]
 
 [tool.ruff.lint]
 preview = true

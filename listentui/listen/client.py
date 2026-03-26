@@ -12,7 +12,7 @@ from typing import Any, Callable, Coroutine, Optional, Self, Union, overload
 
 from async_lru import alru_cache
 from frozendict import frozendict
-from gql import Client, gql
+from gql import Client, GraphQLRequest, gql
 from gql.client import ReconnectingAsyncClientSession
 from gql.transport.aiohttp import AIOHTTPTransport
 from gql.transport.exceptions import TransportQueryError
@@ -47,22 +47,22 @@ class RequestError(Enum):
 
 @dataclass
 class Queries:
-    login: DocumentNode
-    user: DocumentNode
-    album: DocumentNode
-    artist: DocumentNode
-    character: DocumentNode
-    favorite_song: DocumentNode
-    check_favorite: DocumentNode
-    song: DocumentNode
-    songs: DocumentNode
-    source: DocumentNode
-    play_statistic: DocumentNode
-    search: DocumentNode
-    request_song: DocumentNode
-    request_random_song: DocumentNode
-    user_uploads: DocumentNode
-    user_favorites: DocumentNode
+    login: GraphQLRequest
+    user: GraphQLRequest
+    album: GraphQLRequest
+    artist: GraphQLRequest
+    character: GraphQLRequest
+    favorite_song: GraphQLRequest
+    check_favorite: GraphQLRequest
+    song: GraphQLRequest
+    songs: GraphQLRequest
+    source: GraphQLRequest
+    play_statistic: GraphQLRequest
+    search: GraphQLRequest
+    request_song: GraphQLRequest
+    request_random_song: GraphQLRequest
+    user_uploads: GraphQLRequest
+    user_favorites: GraphQLRequest
 
 
 def _build_queries():
@@ -413,8 +413,8 @@ class ListenClient:
             self.logged_in = True
             self.headers["Authorization"] = f"Bearer {user.token}"
         self._queries = _build_queries()
-        transport = AIOHTTPTransport(self.ENDPOINT, headers=self.headers)
-        self._client = Client(transport=transport, fetch_schema_from_transport=False, execute_timeout=20)
+        transport = AIOHTTPTransport(self.ENDPOINT, headers=self.headers, timeout=10)
+        self._client = Client(transport=transport, fetch_schema_from_transport=False, execute_timeout=10)
         self._session: ReconnectingAsyncClientSession | None = None
         ListenClient._client_instance = self
         self._execute_cached = alru_cache(maxsize=20)(self._execute_uncached)
@@ -441,7 +441,7 @@ class ListenClient:
                 "content-type": "application/json",
             }
             headers = headers | {"Authorization": user_token} if user_token else headers
-            transport = AIOHTTPTransport(cls.ENDPOINT, headers=headers)
+            transport = AIOHTTPTransport(cls.ENDPOINT, headers=headers, timeout=10)
             client = Client(transport=transport, fetch_schema_from_transport=False)
             query = _build_queries()
 
@@ -452,7 +452,9 @@ class ListenClient:
                     "systemCount": cls.SYSTEM_COUNT,
                 }
                 async with client as session:
-                    res: dict[str, Any] = await session.execute(document=query.user, variable_values=params)  # pyright: ignore
+                    query = query.user
+                    query.variable_values = params
+                    res: dict[str, Any] = await session.execute(query)
                 user: dict[str, Any] = res["user"]
                 token = user_token
             else:
@@ -464,7 +466,9 @@ class ListenClient:
                 }
                 try:
                     async with client as session:
-                        res: dict[str, Any] = await session.execute(document=query.login, variable_values=params)  # pyright: ignore
+                        query = query.login
+                        query.variable_values = params
+                        res: dict[str, Any] = await session.execute(query)
                 except Exception as e:
                     return e
                 user: dict[str, Any] = res["login"]["user"]
@@ -485,7 +489,7 @@ class ListenClient:
         if self._session:
             raise Exception("Client is already connected")
         async with self._lock:
-            self._session = await self._client.connect_async(reconnecting=True)  # pyright: ignore
+            self._session = await self._client.connect_async(reconnecting=False)  # pyright: ignore[reportAttributeAccessIssue]
             self.connected = True
 
     async def close(self) -> None:
@@ -511,34 +515,39 @@ class ListenClient:
         transport = AIOHTTPTransport(self.ENDPOINT, headers=self.headers)
         self._client = Client(transport=transport, fetch_schema_from_transport=False)
         async with self._lock:
-            self._session = await self._client.connect_async(reconnecting=True)  # pyright: ignore
+            self._session = await self._client.connect_async(reconnecting=True)  # pyright: ignore[reportAttributeAccessIssue]
         return
 
     async def _execute(
-        self, document: DocumentNode, variable_values: Optional[dict[str, Any]] = None
+        self, document: GraphQLRequest, variable_values: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
         res = await self._execute_cached(document=document, variable_values=frozendict(variable_values))  # type: ignore
         hits = self._execute_cached.cache_info().hits
         if hits > self._last_hit:
-            query = {"query": print_ast(document)}
+            query = {"query": print_ast(document.document)}
             self._log.debug(f">>> {query}")
             self._log.debug("<<< Using cached result: " + str(res)[0:100] + "...")
             self._last_hit = hits
         return res
 
     async def _execute_uncached(
-        self, document: DocumentNode, variable_values: Optional[dict[str, Any]] = None
+        self, document: GraphQLRequest, variable_values: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
         if not self.connected:
             raise Exception("Client must be connected")
+        assert self._session is not None
         try:
-            return await self._session.execute(document=document, variable_values=variable_values)  # pyright: ignore
+            query = document
+            query.variable_values = variable_values
+            return await self._session.execute(query)
         except TransportQueryError as exc:
             if not exc.errors:
                 raise exc
             if exc.errors[0]["message"] == "Not logged in." and self._user is not None:
                 await self.regenerate_token()
-                return await self._session.execute(document=document, variable_values=variable_values)  # pyright: ignore
+                query = document
+                query.variable_values = variable_values
+                return await self._session.execute(query)
             raise exc
 
     async def update_current_user(self, offset: int = 0, count: int = 20) -> CurrentUser:

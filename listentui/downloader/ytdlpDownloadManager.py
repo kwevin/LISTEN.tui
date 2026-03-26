@@ -6,7 +6,7 @@ from threading import Event, Lock
 from typing import Any, ClassVar
 
 from yt_dlp import YoutubeDL
-from yt_dlp.postprocessor import PostProcessor
+from yt_dlp.postprocessor import PostProcessor  # type: ignore
 
 from listentui.data.config import Config
 from listentui.downloader.baseInterface import DownloadItem, ItemDownloadCallback, QueueState
@@ -100,7 +100,7 @@ class YoutubeDLDownloadManager:
         opts = Config.get_config().downloader.custom_args
         opts.update(self.OPTS_FLAG)
 
-        ytdlp = YoutubeDL(opts)
+        ytdlp = YoutubeDL(opts)  # type: ignore
         ytdlp.add_progress_hook(self._progress_hook)
         ytdlp.add_post_processor(DownloadItemPostProcessor(self), when="pre_process")
         ytdlp.add_post_processor(MetadataPostProcessor(), when="pre_process")

@@ -34,7 +34,7 @@ def cli_to_api(opts: list[str], cli_defaults: bool = False) -> dict[str, Any]:
 
     diff = {k: v for k, v in parsed.items() if default_opts[k] != v}
     if "postprocessors" in diff:
-        diff["postprocessors"] = [pp for pp in diff["postprocessors"] if pp not in default_opts["postprocessors"]]
+        diff["postprocessors"] = [pp for pp in diff["postprocessors"] if pp not in default_opts["postprocessors"]]  # type: ignore
     return diff
 
 

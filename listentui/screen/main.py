@@ -37,8 +37,8 @@ class MainScreen(Screen[None]):
                 yield SearchPage()
             with TabPane("History", id="history"):
                 yield HistoryPage()
-            with TabPane("Download", id="download"):
-                yield Placeholder()
+            # with TabPane("Download", id="download"):
+            #     yield Placeholder()
             with TabPane("Setting", id="setting"):
                 yield SettingPage()
         yield Footer()

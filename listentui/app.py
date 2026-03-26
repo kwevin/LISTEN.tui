@@ -31,7 +31,7 @@ from listentui.widgets.player import MPVThread, Player
 
 class ListentuiApp(App[str]):
     TITLE = "LISTEN.moe"
-    CSS_PATH = get_root().joinpath("testing.tcss")
+    # CSS_PATH = get_root().joinpath("testing.tcss")
 
     def __init__(self) -> None:
         super().__init__()
